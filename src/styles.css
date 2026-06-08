@@ -140,3 +140,79 @@
 @utility shadow-lift { box-shadow: var(--shadow-lift); }
 @utility bg-gradient-primary { background-image: var(--gradient-primary); }
 @utility bg-gradient-accent { background-image: var(--gradient-accent); }
+
+/* Animation Utility Classes */
+@utility animate-fade-in-up {
+  animation: fadeInUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+@utility animate-float {
+  animation: floatAnimation 6s ease-in-out infinite;
+}
+@utility animate-pulse-glow {
+  animation: pulseGlow 5s ease-in-out infinite;
+}
+@utility animate-typing {
+  animation: cursorBlink 1s step-end infinite;
+}
+
+/* Keyframes */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes floatAnimation {
+  0%, 100% {
+    transform: translateY(0px) rotate(0deg);
+  }
+  50% {
+    transform: translateY(-8px) rotate(0.5deg);
+  }
+}
+
+@keyframes pulseGlow {
+  0%, 100% {
+    opacity: 0.15;
+    transform: scale(1) translate(0px, 0px);
+  }
+  50% {
+    opacity: 0.3;
+    transform: scale(1.08) translate(8px, -8px);
+  }
+}
+
+@keyframes cursorBlink {
+  from, to { border-color: transparent }
+  50% { border-color: currentColor }
+}
+
+@utility animate-shimmer {
+  background: linear-gradient(90deg, var(--muted) 25%, var(--border) 50%, var(--muted) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite linear;
+}
+
+@utility animate-pulse-scale {
+  animation: pulseScale 2s ease-in-out infinite;
+}
+
+@keyframes shimmer {
+  to { background-position-x: -200%; }
+}
+
+@keyframes pulseScale {
+  0%, 100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.03);
+  }
+}
+
+

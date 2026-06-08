@@ -1,7 +1,7 @@
 import { createLazyFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { toast } from "sonner";
 import {
   ArrowRight,
@@ -10,6 +10,13 @@ import {
   ShieldCheck,
   Sparkles,
   TrendingUp,
+  BookOpen,
+  User,
+  Globe,
+  FilePlus,
+  PenTool,
+  X,
+  HelpCircle,
 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
@@ -36,6 +43,24 @@ function Dashboard() {
   const [q, setQ] = useState("");
   const [loc, setLoc] = useState("");
   const [searching, setSearching] = useState(false);
+  const [showGuide, setShowGuide] = useState(true);
+
+  useEffect(() => {
+    const saved = localStorage.getItem("career_os_onboarding_guide");
+    if (saved === "false") {
+      setShowGuide(false);
+    }
+  }, []);
+
+  const handleDismissGuide = () => {
+    setShowGuide(false);
+    localStorage.setItem("career_os_onboarding_guide", "false");
+  };
+
+  const handleShowGuide = () => {
+    setShowGuide(true);
+    localStorage.removeItem("career_os_onboarding_guide");
+  };
 
   const jobs = useQuery({ queryKey: ["jobs"], queryFn: () => jobsFn() });
   const docs = useQuery({ queryKey: ["documents"], queryFn: () => docsFn() });
@@ -138,6 +163,130 @@ function Dashboard() {
         </div>
       </section>
 
+      {showGuide ? (
+        <section className="relative overflow-hidden rounded-2xl border border-border bg-card p-6 shadow-soft md:p-8 animate-fade-in-up">
+          <div className="absolute right-4 top-4">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={handleDismissGuide}
+              className="text-muted-foreground hover:text-foreground h-8 w-8"
+              title="Dismiss onboarding guide"
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
+          <div className="flex items-center gap-2 mb-4">
+            <BookOpen className="h-5 w-5 text-primary" />
+            <h2 className="font-display text-2xl md:text-3xl text-foreground">
+              Getting Started: How to effectively use CareerOS
+            </h2>
+          </div>
+          <p className="text-sm text-muted-foreground mb-6 max-w-3xl">
+            CareerOS matches and tailors applications by grounding AI actions in your real background. Follow these steps to build your master knowledge base and generate high-impact career assets.
+          </p>
+          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
+            <div className="flex flex-col justify-between space-y-3 rounded-xl border border-border bg-muted/10 p-4 transition-all hover:bg-muted/20">
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/10 text-[11px] font-semibold text-primary">
+                    1
+                  </span>
+                  <div className="font-medium text-sm flex items-center gap-1.5 text-foreground">
+                    <User className="h-4 w-4 text-muted-foreground" /> Profile details
+                  </div>
+                </div>
+                <p className="text-xs leading-relaxed text-muted-foreground">
+                  Fill in your target roles, locations, and personal info in Settings. This defines the target parameters for all matching.
+                </p>
+              </div>
+              <Link
+                to="/settings"
+                className="inline-flex items-center gap-1 text-xs font-semibold text-primary hover:underline pt-2"
+              >
+                Configure details <ArrowRight className="h-3 w-3" />
+              </Link>
+            </div>
+
+            <div className="flex flex-col justify-between space-y-3 rounded-xl border border-border bg-muted/10 p-4 transition-all hover:bg-muted/20">
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/10 text-[11px] font-semibold text-primary">
+                    2
+                  </span>
+                  <div className="font-medium text-sm flex items-center gap-1.5 text-foreground">
+                    <Globe className="h-4 w-4 text-muted-foreground" /> Connect URLs
+                  </div>
+                </div>
+                <p className="text-xs leading-relaxed text-muted-foreground">
+                  Enrich your profile by pasting links to your GitHub, LinkedIn, portfolio, or blogs. Our AI indexes them automatically.
+                </p>
+              </div>
+              <Link
+                to="/settings"
+                className="inline-flex items-center gap-1 text-xs font-semibold text-primary hover:underline pt-2"
+              >
+                Expand profile <ArrowRight className="h-3 w-3" />
+              </Link>
+            </div>
+
+            <div className="flex flex-col justify-between space-y-3 rounded-xl border border-border bg-muted/10 p-4 transition-all hover:bg-muted/20">
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/10 text-[11px] font-semibold text-primary">
+                    3
+                  </span>
+                  <div className="font-medium text-sm flex items-center gap-1.5 text-foreground">
+                    <FilePlus className="h-4 w-4 text-muted-foreground" /> Add Documents
+                  </div>
+                </div>
+                <p className="text-xs leading-relaxed text-muted-foreground">
+                  Upload your master resumes, past cover letters, transcripts, or experience letters to act as the source of truth for applications.
+                </p>
+              </div>
+              <Link
+                to="/upload"
+                className="inline-flex items-center gap-1 text-xs font-semibold text-primary hover:underline pt-2"
+              >
+                Upload resumes <ArrowRight className="h-3 w-3" />
+              </Link>
+            </div>
+
+            <div className="flex flex-col justify-between space-y-3 rounded-xl border border-border bg-muted/10 p-4 transition-all hover:bg-muted/20">
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/10 text-[11px] font-semibold text-primary">
+                    4
+                  </span>
+                  <div className="font-medium text-sm flex items-center gap-1.5 text-foreground">
+                    <PenTool className="h-4 w-4 text-muted-foreground" /> Writing Style
+                  </div>
+                </div>
+                <p className="text-xs leading-relaxed text-muted-foreground">
+                  Paste writing samples in Settings. The AI builds a style print so tailored applications speak in your genuine voice.
+                </p>
+              </div>
+              <Link
+                to="/settings"
+                className="inline-flex items-center gap-1 text-xs font-semibold text-primary hover:underline pt-2"
+              >
+                Train writing style <ArrowRight className="h-3 w-3" />
+              </Link>
+            </div>
+          </div>
+        </section>
+      ) : (
+        <div className="flex justify-end">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handleShowGuide}
+            className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 h-8 px-3 rounded-full border border-border bg-card/50"
+          >
+            <HelpCircle className="h-3.5 w-3.5" /> Show setup guide
+          </Button>
+        </div>
+      )}
 
       <div className="grid gap-4 lg:grid-cols-3">
         <div className="rounded-2xl border border-border bg-card p-6 shadow-soft lg:col-span-2">
