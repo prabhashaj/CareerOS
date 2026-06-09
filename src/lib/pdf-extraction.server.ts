@@ -90,21 +90,13 @@ if (typeof globalThis.DOMMatrix === "undefined") {
   globalThis.DOMMatrix = DOMMatrixPolyfill as any;
 }
 
-import * as pdfjs from "pdfjs-dist/legacy/build/pdf.mjs";
 import mammoth from "mammoth";
-
-// Dynamically compute the absolute path of the worker file.
-// Since this runs on the server under TanStack Start / Nitro,
-// using a file:// URL ensures standard dynamic import works reliably.
-// Note: We leave pdfjs.GlobalWorkerOptions.workerSrc undefined so that
-// pdfjs falls back to the "fake worker" executing on the main thread,
-// which correctly inherits our global DOMMatrix polyfill.
-const workerPath = "file:///" + path.resolve("./node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs").replace(/\\/g, "/");
 
 /**
  * Extracts plain text from a PDF file buffer using the legacy build of pdfjs-dist.
  */
 export async function extractTextFromPdf(buffer: Buffer): Promise<string> {
+  const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
   const data = new Uint8Array(buffer);
   
   // Set standardFontDataUrl to avoid missing font warnings
