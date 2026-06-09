@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
+import ReactMarkdown from "react-markdown";
 import { Sparkles, Trash2, AlertTriangle, Wand2 } from "lucide-react";
 import { getMyProfile, updateMyProfile } from "@/lib/profile.functions";
 import { expandProfile } from "@/lib/expand.functions";
@@ -118,7 +119,9 @@ function WritingStyleSection({ currentStyle }: { currentStyle: WritingStyle | nu
       </div>
       {currentStyle && (
         <div className="space-y-2 rounded-md border border-border p-3 text-sm">
-          <p>{currentStyle.summary}</p>
+          <div className="text-sm text-foreground">
+            <ReactMarkdown>{currentStyle.summary}</ReactMarkdown>
+          </div>
           <div className="flex flex-wrap gap-1">{currentStyle.tone.map((t, i) => <Badge key={i} variant="secondary">{t}</Badge>)}</div>
           {currentStyle.signature_moves.length > 0 && (
             <div className="text-xs"><span className="font-medium">Signature moves:</span> {currentStyle.signature_moves.join(" · ")}</div>

@@ -2,6 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
+import ReactMarkdown from "react-markdown";
 import {
   ShieldCheck,
   ShieldX,
@@ -171,7 +172,9 @@ function ReviewPage() {
                     )}
 
                     {r.summary && (
-                      <p className="mt-1 text-sm text-muted-foreground">{r.summary}</p>
+                      <div className="mt-1 text-sm text-muted-foreground">
+                        <ReactMarkdown>{r.summary}</ReactMarkdown>
+                      </div>
                     )}
                     {sourceUrl && (
                       <a

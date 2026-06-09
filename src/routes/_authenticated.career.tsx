@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
+import ReactMarkdown from "react-markdown";
 import { Compass, Sparkles, ArrowRight, Target, TrendingUp, Rocket, Loader2 } from "lucide-react";
 import { discoverCareerPaths } from "@/lib/career.functions";
 import { Button } from "@/components/ui/button";
@@ -118,7 +119,9 @@ function CareerPage() {
         <div className="mt-8 space-y-8">
           <div className="rounded-2xl border border-border bg-card p-6">
             <div className="text-xs uppercase tracking-wider text-muted-foreground">Summary</div>
-            <p className="mt-2 text-sm leading-relaxed">{result.summary}</p>
+            <div className="mt-2 text-sm leading-relaxed">
+              <ReactMarkdown>{result.summary}</ReactMarkdown>
+            </div>
           </div>
 
           {(["adjacent", "lateral", "stretch"] as const).map((track) => {

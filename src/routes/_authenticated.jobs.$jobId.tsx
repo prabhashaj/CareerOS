@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 import { useEffect, useState } from "react";
+import ReactMarkdown from "react-markdown";
 import { ArrowLeft, ExternalLink, Sparkles, Wand2, FileText, MessageSquare, Send, Download, Save, ShieldCheck, GraduationCap, Mic, Brain, RefreshCw } from "lucide-react";
 import { getJob } from "@/lib/jobs.functions";
 import { rankJob } from "@/lib/ranking.functions";
@@ -175,7 +176,9 @@ function JobDetail() {
           {breakdown && (
             <div className="rounded-xl border border-border bg-card p-5">
               <h3 className="font-medium">AI reasoning</h3>
-              <p className="mt-2 text-sm text-muted-foreground">{breakdown.reasoning}</p>
+              <div className="mt-2 text-sm text-muted-foreground">
+                <ReactMarkdown>{breakdown.reasoning}</ReactMarkdown>
+              </div>
               <div className="mt-4 grid gap-3 md:grid-cols-2">
                 <div>
                   <div className="text-xs uppercase text-muted-foreground">Matched skills</div>
@@ -344,7 +347,9 @@ function JobDetail() {
                   <div className="rounded-lg border border-border p-3"><div className="text-xs uppercase text-muted-foreground">Resume</div><div className="text-2xl font-semibold">{review.resume_score ?? "—"}</div></div>
                   <div className="rounded-lg border border-border p-3"><div className="text-xs uppercase text-muted-foreground">Cover</div><div className="text-2xl font-semibold">{review.cover_score ?? "—"}</div></div>
                 </div>
-                <p className="text-sm">{review.summary}</p>
+                <div className="text-sm text-foreground">
+                  <ReactMarkdown>{review.summary}</ReactMarkdown>
+                </div>
                 {review.strengths.length > 0 && (
                   <div><div className="text-xs uppercase text-muted-foreground">Strengths</div><ul className="mt-1 list-disc pl-5 text-sm">{review.strengths.map((s, i) => <li key={i}>{s}</li>)}</ul></div>
                 )}
@@ -398,7 +403,9 @@ function JobDetail() {
             </div>
             {upskill && (
               <div className="mt-4 space-y-4 animate-fade-in">
-                <p className="text-sm">{upskill.summary}</p>
+                <div className="text-sm text-foreground">
+                  <ReactMarkdown>{upskill.summary}</ReactMarkdown>
+                </div>
                 <div>
                   <div className="text-xs uppercase text-muted-foreground">Gaps</div>
                   <div className="mt-1 grid gap-2 sm:grid-cols-2">
