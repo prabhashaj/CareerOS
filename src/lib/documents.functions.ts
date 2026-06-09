@@ -29,15 +29,54 @@ export const createDocument = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
+
+    let extracted = data.extracted_text || "";
+
+    // If a file was uploaded and no text is extracted yet, perform server-side extraction
+    if (data.storage_path && !extracted) {
+      try {
+        const { data: fileData, error: downloadError } = await supabase.storage
+          .from("jobpilot-documents")
+          .download(data.storage_path);
+
+        if (downloadError) throw downloadError;
+
+        const { extractTextFromFile } = await import("@/lib/pdf-extraction.server");
+        const fileBuffer = Buffer.from(await fileData.arrayBuffer());
+        
+        extracted = await extractTextFromFile(fileBuffer, data.mime_type, data.title);
+      } catch (err) {
+        console.error("Text extraction failed:", err);
+        throw new Error(err instanceof Error ? err.message : String(err));
+      }
+    }
+
     if (data.is_primary && data.kind === "resume") {
       await supabase.from("documents").update({ is_primary: false }).eq("user_id", userId).eq("kind", "resume");
     }
+
     const { data: row, error } = await supabase
       .from("documents")
-      .insert({ ...data, user_id: userId })
+      .insert({ 
+        ...data, 
+        extracted_text: extracted || null,
+        user_id: userId 
+      })
       .select()
       .single();
+
     if (error) throw new Error(error.message);
+
+    // Automatically trigger indexing/chunking of the document if we have text
+    if (extracted) {
+      try {
+        const { indexDocumentChunks } = await import("@/lib/retrieval.functions");
+        await indexDocumentChunks(supabase, userId, row.id);
+      } catch (err) {
+        console.error("Automatic indexing failed for document:", row.id, err);
+      }
+    }
+
     return row;
   });
 
