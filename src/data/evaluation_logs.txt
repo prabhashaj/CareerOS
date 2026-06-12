@@ -1,0 +1,22 @@
+Starting Ragas Evaluation script...
+1. Loading candidate documents...
+  Loaded AnnepuJyothiPrabhashResume_extracted.txt (6 chunks)
+  Loaded new_resume-1-_extracted.txt (4 chunks)
+  Loaded jpmorgan_virtual_internship_extracted.txt (1 chunks)
+  Loaded From my childhood, I always wanted.txt (2 chunks)
+Total chunks loaded: 13
+2. Initializing Mistral AI Embeddings...
+3. Generating embeddings for chunks...
+4. Simulating RAG retrieval and generation for evaluation questions...
+  Processing question 1/6: 'What is Prabhash's major field of study, university, and current GPA?'
+  Processing question 2/6: 'Describe the projects Prabhash has built using Transformers or Attention models.'
+  Processing question 3/6: 'Detail Prabhash's virtual internship experience at JPMorgan Chase.'
+  Processing question 4/6: 'What is ChatPilot and what technologies were used to build it?'
+  Processing question 5/6: 'What is Brain AI and how does it implement storage and retrieval?'
+  Processing question 6/6: 'What are Prabhash's childhood inspirations and career goals?'
+5. Formatting dataset for Ragas...
+6. Initializing Ragas Evaluator (using mistral-large-latest as judge)...
+7. Running evaluation metrics...
+[stderr] Evaluating:   0%|          | 0/24 [00:00<?, ?it/s][stderr] Evaluating:   4%|4         | 1/24 [00:06<02:29,  6.51s/it][stderr] Exception raised in Job[1]: HTTPStatusError(Error response 429 while fetching https://api.mistral.ai/v1/chat/completions: {"object":"error","message":"Rate limit exceeded","type":"rate_limited","param":null,"code":"1300","raw_status_code":429})
+[stderr] Evaluating:   8%|8         | 2/24 [03:36<46:15, 126.17s/it][stderr] Evaluating:  12%|#2        | 3/24 [04:29<32:27, 92.76s/it] [stderr] Evaluating:  17%|#6        | 4/24 [04:34<19:19, 57.99s/it][stderr] Evaluating:  21%|##        | 5/24 [05:11<16:00, 50.57s/it]
+Evaluation failed with exit code 3221225786. Check logs above.

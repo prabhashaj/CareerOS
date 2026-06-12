@@ -166,6 +166,138 @@ async function aiReasoning(input: {
 }
 
 
+export async function rankJobInternal(
+  supabase: any,
+  userId: string,
+  jobId: string,
+  persist: boolean = true,
+  skipAiReasoning: boolean = false,
+) {
+  const [{ data: job, error: jErr }, { data: profile }] = await Promise.all([
+    supabase.from("jobs").select("*").eq("id", jobId).single(),
+    supabase.from("profiles").select("*").eq("id", userId).single(),
+  ]);
+  if (jErr) throw new Error(jErr.message);
+
+  const { loadCandidateText } = await import("@/lib/candidate-context.server");
+  const candidateText = await loadCandidateText(supabase, userId, 14_000);
+
+  // Get skills — fall back to AI extraction if job has none stored.
+  let jobSkills: string[] = job.skills ?? [];
+  if (jobSkills.length === 0 && job.description && !skipAiReasoning) {
+    jobSkills = await aiExtractSkills(job.title, job.description);
+    if (jobSkills.length > 0) {
+      await supabase.from("jobs").update({ skills: jobSkills }).eq("id", job.id);
+    }
+  }
+  // Prefer AI-grounded matching (synonyms, acronyms). Fall back to
+  // substring-overlap if the model call fails or AI is disabled.
+  let matched: string[];
+  let missing: string[];
+  let skills: number;
+  const aiSkillResult = skipAiReasoning ? null : await aiClassifySkills(jobSkills, candidateText);
+  if (aiSkillResult) {
+    matched = aiSkillResult.matched;
+    missing = aiSkillResult.missing;
+    skills = jobSkills.length === 0 ? 0.5 : matched.length / jobSkills.length;
+  } else {
+    const overlap = skillOverlap(jobSkills, candidateText);
+    matched = overlap.matched;
+    missing = overlap.missing;
+    skills = overlap.score;
+  }
+
+  // Semantic similarity via embeddings if we have candidate context to embed against.
+  let semantic = 0.5;
+  if (candidateText && job.description) {
+    try {
+      const { embedTexts } = await import("@/lib/embeddings.server");
+      const [a, b] = await embedTexts([
+        candidateText.slice(0, 6000),
+        `${job.title}\n${job.description}`.slice(0, 6000),
+      ]);
+      let dot = 0, na = 0, nb = 0;
+      for (let i = 0; i < a.length; i++) {
+        dot += a[i] * b[i];
+        na += a[i] * a[i];
+        nb += b[i] * b[i];
+      }
+      semantic = Math.max(0, Math.min(1, dot / (Math.sqrt(na) * Math.sqrt(nb) || 1)));
+    } catch {
+      semantic = 0.5;
+    }
+  }
+
+  const prefs = (profile?.preferences ?? {}) as { remote_only?: boolean };
+  const wantsRemote = Boolean(prefs.remote_only);
+  const location = locationScore(job, profile?.target_locations ?? [], wantsRemote);
+  const title = titleScore(job.title ?? "", profile?.target_roles ?? []);
+
+  let eligibility = 1;
+  if (profile?.min_salary && job.salary_max && job.salary_max < profile.min_salary) {
+    eligibility -= 0.4;
+  }
+  if (profile?.requires_sponsorship && /no sponsorship|us citizen|citizens only/i.test(job.description ?? "")) {
+    eligibility -= 0.6;
+  }
+  eligibility = Math.max(0, eligibility);
+
+  const score =
+    0.32 * semantic +
+    0.28 * skills +
+    0.15 * title +
+    0.13 * location +
+    0.12 * eligibility;
+
+  const fallbackReason = `Title fit ${(title * 100).toFixed(0)}% • Skills ${(skills * 100).toFixed(0)}% • Semantic ${(semantic * 100).toFixed(0)}% • Location ${(location * 100).toFixed(0)}% • Eligibility ${(eligibility * 100).toFixed(0)}%.`;
+  const aiText = skipAiReasoning
+    ? null
+    : await aiReasoning({
+        jobTitle: job.title,
+        company: job.company,
+        scores: { skills, semantic, location, eligibility, title },
+        matched,
+        missing,
+      });
+
+  const breakdown: MatchBreakdown = {
+    skills,
+    semantic,
+    location,
+    eligibility,
+    title,
+    reasoning: aiText ?? fallbackReason,
+    matched_skills: matched,
+    missing_skills: missing,
+  };
+
+  if (persist) {
+    const { data: existing } = await supabase
+      .from("job_applications")
+      .select("id")
+      .eq("user_id", userId)
+      .eq("job_id", job.id)
+      .maybeSingle();
+
+    if (existing) {
+      await supabase
+        .from("job_applications")
+        .update({ match_score: Number(score.toFixed(4)), match_breakdown: breakdown })
+        .eq("id", existing.id);
+    } else {
+      await supabase.from("job_applications").insert({
+        user_id: userId,
+        job_id: job.id,
+        status: "saved",
+        match_score: Number(score.toFixed(4)),
+        match_breakdown: breakdown,
+      });
+    }
+  }
+
+  return { score: Number(score.toFixed(4)), breakdown };
+}
+
 // Rank one job against the user's primary resume + profile preferences.
 export const rankJob = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
@@ -180,130 +312,7 @@ export const rankJob = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
-
-    const [{ data: job, error: jErr }, { data: profile }] = await Promise.all([
-      supabase.from("jobs").select("*").eq("id", data.job_id).single(),
-      supabase.from("profiles").select("*").eq("id", userId).single(),
-    ]);
-    if (jErr) throw new Error(jErr.message);
-
-    const { loadCandidateText } = await import("@/lib/candidate-context.server");
-    const candidateText = await loadCandidateText(supabase, userId, 14_000);
-
-    // Get skills — fall back to AI extraction if job has none stored.
-    let jobSkills: string[] = job.skills ?? [];
-    if (jobSkills.length === 0 && job.description && !data.skip_ai_reasoning) {
-      jobSkills = await aiExtractSkills(job.title, job.description);
-      if (jobSkills.length > 0) {
-        await supabase.from("jobs").update({ skills: jobSkills }).eq("id", job.id);
-      }
-    }
-    // Prefer AI-grounded matching (synonyms, acronyms). Fall back to
-    // substring-overlap if the model call fails or AI is disabled.
-    let matched: string[];
-    let missing: string[];
-    let skills: number;
-    const aiSkillResult = data.skip_ai_reasoning ? null : await aiClassifySkills(jobSkills, candidateText);
-    if (aiSkillResult) {
-      matched = aiSkillResult.matched;
-      missing = aiSkillResult.missing;
-      skills = jobSkills.length === 0 ? 0.5 : matched.length / jobSkills.length;
-    } else {
-      const overlap = skillOverlap(jobSkills, candidateText);
-      matched = overlap.matched;
-      missing = overlap.missing;
-      skills = overlap.score;
-    }
-
-    // Semantic similarity via embeddings if we have candidate context to embed against.
-    let semantic = 0.5;
-    if (candidateText && job.description) {
-      try {
-        const { embedTexts } = await import("@/lib/embeddings.server");
-        const [a, b] = await embedTexts([
-          candidateText.slice(0, 6000),
-          `${job.title}\n${job.description}`.slice(0, 6000),
-        ]);
-        let dot = 0, na = 0, nb = 0;
-        for (let i = 0; i < a.length; i++) {
-          dot += a[i] * b[i];
-          na += a[i] * a[i];
-          nb += b[i] * b[i];
-        }
-        semantic = Math.max(0, Math.min(1, dot / (Math.sqrt(na) * Math.sqrt(nb) || 1)));
-      } catch {
-        semantic = 0.5;
-      }
-    }
-
-    const prefs = (profile?.preferences ?? {}) as { remote_only?: boolean };
-    const wantsRemote = Boolean(prefs.remote_only);
-    const location = locationScore(job, profile?.target_locations ?? [], wantsRemote);
-    const title = titleScore(job.title ?? "", profile?.target_roles ?? []);
-
-    let eligibility = 1;
-    if (profile?.min_salary && job.salary_max && job.salary_max < profile.min_salary) {
-      eligibility -= 0.4;
-    }
-    if (profile?.requires_sponsorship && /no sponsorship|us citizen|citizens only/i.test(job.description ?? "")) {
-      eligibility -= 0.6;
-    }
-    eligibility = Math.max(0, eligibility);
-
-    const score =
-      0.32 * semantic +
-      0.28 * skills +
-      0.15 * title +
-      0.13 * location +
-      0.12 * eligibility;
-
-    const fallbackReason = `Title fit ${(title * 100).toFixed(0)}% • Skills ${(skills * 100).toFixed(0)}% • Semantic ${(semantic * 100).toFixed(0)}% • Location ${(location * 100).toFixed(0)}% • Eligibility ${(eligibility * 100).toFixed(0)}%.`;
-    const aiText = data.skip_ai_reasoning
-      ? null
-      : await aiReasoning({
-          jobTitle: job.title,
-          company: job.company,
-          scores: { skills, semantic, location, eligibility, title },
-          matched,
-          missing,
-        });
-
-    const breakdown: MatchBreakdown = {
-      skills,
-      semantic,
-      location,
-      eligibility,
-      title,
-      reasoning: aiText ?? fallbackReason,
-      matched_skills: matched,
-      missing_skills: missing,
-    };
-
-    if (data.persist) {
-      const { data: existing } = await supabase
-        .from("job_applications")
-        .select("id")
-        .eq("user_id", userId)
-        .eq("job_id", job.id)
-        .maybeSingle();
-
-      if (existing) {
-        await supabase
-          .from("job_applications")
-          .update({ match_score: Number(score.toFixed(4)), match_breakdown: breakdown })
-          .eq("id", existing.id);
-      } else {
-        await supabase.from("job_applications").insert({
-          user_id: userId,
-          job_id: job.id,
-          status: "saved",
-          match_score: Number(score.toFixed(4)),
-          match_breakdown: breakdown,
-        });
-      }
-    }
-
-    return { score: Number(score.toFixed(4)), breakdown };
+    return await rankJobInternal(supabase, userId, data.job_id, data.persist, data.skip_ai_reasoning);
   });
 
 // Rank every un-scored job for the user (parallel batches, no AI reasoning to fit worker timeout).
@@ -319,7 +328,6 @@ export const rankAllJobs = createServerFn({ method: "POST" })
       .limit(40);
     if (error) throw new Error(error.message);
 
-    const { rankJob: rj } = await import("@/lib/ranking.functions");
     let scored = 0;
     const BATCH = 6;
     const list = jobs ?? [];
@@ -327,7 +335,7 @@ export const rankAllJobs = createServerFn({ method: "POST" })
       const slice = list.slice(i, i + BATCH);
       const results = await Promise.all(
         slice.map((j) =>
-          rj({ data: { job_id: j.id, persist: true, skip_ai_reasoning: true } })
+          rankJobInternal(supabase, userId, j.id, true, true)
             .then(() => true)
             .catch((e) => {
               console.error("rank failed", j.id, e);

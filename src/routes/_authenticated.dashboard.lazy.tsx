@@ -84,27 +84,14 @@ function Dashboard() {
 
 
   const handleDiscover = async () => {
-    setSearching(true);
-    try {
-      const res = await searchFn({
-        data: { query: q.trim() || undefined, location: loc.trim() || undefined, limit: 30 },
-      });
-      if (res.error) {
-        toast.error(res.error);
-        return;
-      }
-      if (res.ingested > 0) {
-        toast.success(`Found ${res.ingested} new job${res.ingested === 1 ? "" : "s"}`);
-        qc.invalidateQueries({ queryKey: ["jobs"] });
-        navigate({ to: "/jobs" });
-      } else {
-        toast.info("No new jobs found. Try a different query.");
-      }
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Search failed");
-    } finally {
-      setSearching(false);
+    if (!q.trim()) {
+      toast.error("Please enter a role, skill, or keywords to search.");
+      return;
     }
+    navigate({
+      to: "/jobs",
+      search: { q: q.trim(), loc: loc.trim() || undefined, search: true },
+    });
   };
 
   return (

@@ -28,7 +28,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { listJobs, deleteJob, ingestJobFromUrl } from "@/lib/jobs.functions";
-import { searchJobsWeb } from "@/lib/jobsearch.functions";
+import { searchJobsWeb, importDiscoveredJob } from "@/lib/jobsearch.functions";
 import { rankAllJobs } from "@/lib/ranking.functions";
 import { listApplications } from "@/lib/applications.functions";
 import { Button } from "@/components/ui/button";
@@ -43,8 +43,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { z } from "zod";
+
+const jobsSearchSchema = z.object({
+  q: z.string().optional(),
+  loc: z.string().optional(),
+  search: z.union([z.string(), z.boolean()]).optional(),
+});
 
 export const Route = createFileRoute("/_authenticated/jobs/")({
+  validateSearch: (search) => jobsSearchSchema.parse(search),
   head: () => ({ meta: [{ title: "Jobs — CareerOS" }] }),
   component: JobsPage,
 });
@@ -92,11 +100,13 @@ function SearchingOverlay({ query, location }: { query: string; location: string
 
 function JobsPage() {
   const qc = useQueryClient();
+  const searchParams = Route.useSearch();
   const fn = useServerFn(listJobs);
   const del = useServerFn(deleteJob);
   const rankAll = useServerFn(rankAllJobs);
   const ingest = useServerFn(ingestJobFromUrl);
   const search = useServerFn(searchJobsWeb);
+  const importJobFn = useServerFn(importDiscoveredJob);
   const appsFn = useServerFn(listApplications);
   const { data, isLoading } = useQuery({ queryKey: ["jobs"], queryFn: () => fn() });
   const apps = useQuery({ queryKey: ["applications"], queryFn: () => appsFn() });
@@ -111,6 +121,93 @@ function JobsPage() {
   const [remoteOnly, setRemoteOnly] = useState(false);
   const [searchMode, setSearchMode] = useState<"any" | "entry_level">("any");
   const [searching, setSearching] = useState(false);
+
+  const [discoveredJobs, setDiscoveredJobs] = useState<any[] | null>(null);
+  const [importingJobUrl, setImportingJobUrl] = useState<string | null>(null);
+  const [importingAll, setImportingAll] = useState(false);
+
+  // Load state from sessionStorage on mount
+  useEffect(() => {
+    try {
+      const qVal = sessionStorage.getItem("career_os_search_q");
+      const locVal = sessionStorage.getItem("career_os_search_loc");
+      const jobsVal = sessionStorage.getItem("career_os_discovered_jobs");
+      if (qVal) setSearchQ(qVal);
+      if (locVal) setSearchLoc(locVal);
+      if (jobsVal) setDiscoveredJobs(JSON.parse(jobsVal));
+    } catch (e) {
+      console.error("Failed to load sessionStorage state", e);
+    }
+  }, []);
+
+  // Update sessionStorage when state changes
+  useEffect(() => {
+    try {
+      if (searchQ) sessionStorage.setItem("career_os_search_q", searchQ);
+      else sessionStorage.removeItem("career_os_search_q");
+    } catch {}
+  }, [searchQ]);
+
+  useEffect(() => {
+    try {
+      if (searchLoc) sessionStorage.setItem("career_os_search_loc", searchLoc);
+      else sessionStorage.removeItem("career_os_search_loc");
+    } catch {}
+  }, [searchLoc]);
+
+  useEffect(() => {
+    try {
+      if (discoveredJobs) {
+        sessionStorage.setItem("career_os_discovered_jobs", JSON.stringify(discoveredJobs));
+      } else {
+        sessionStorage.removeItem("career_os_discovered_jobs");
+      }
+    } catch {}
+  }, [discoveredJobs]);
+
+  // Trigger search if routed with params (overwrites sessionStorage)
+  useEffect(() => {
+    if (searchParams.q) {
+      setSearchQ(searchParams.q);
+    }
+    if (searchParams.loc) {
+      setSearchLoc(searchParams.loc);
+    }
+    if (searchParams.search) {
+      const runSearch = async () => {
+        setSearching(true);
+        setDiscoveredJobs(null);
+        try {
+          const res = await search({
+            data: {
+              query: searchParams.q || undefined,
+              location: searchParams.loc || undefined,
+              remoteOnly: false,
+              mode: "any",
+              limit: 40,
+            },
+          });
+          if (res.error) {
+            toast.error(res.error);
+            return;
+          }
+          if (res.success && res.jobs) {
+            setDiscoveredJobs(res.jobs);
+            if (res.jobs.length === 0) {
+              toast.info("No matching jobs found.");
+            } else {
+              toast.success(`Found ${res.jobs.length} active jobs on the web!`);
+            }
+          }
+        } catch (e) {
+          toast.error(e instanceof Error ? e.message : "Search failed");
+        } finally {
+          setSearching(false);
+        }
+      };
+      runSearch();
+    }
+  }, [searchParams.q, searchParams.loc, searchParams.search]);
 
   // Filters
   const [showFilters, setShowFilters] = useState(false);
@@ -214,6 +311,7 @@ function JobsPage() {
 
   const handleWebSearch = async () => {
     setSearching(true);
+    setDiscoveredJobs(null);
     try {
       const res = await search({
         data: {
@@ -228,16 +326,85 @@ function JobsPage() {
         toast.error(res.error);
         return;
       }
-      if (res.ingested > 0) {
-        toast.success(`Found ${res.ingested} new job${res.ingested === 1 ? "" : "s"}${res.skipped ? ` (skipped ${res.skipped})` : ""}`);
-      } else {
-        toast.info("No new jobs found. Try a different query or location.");
+      if (res.success && res.jobs) {
+        setDiscoveredJobs(res.jobs);
+        if (res.jobs.length === 0) {
+          toast.info("No matching jobs found. Try a different query or location.");
+        } else {
+          toast.success(`Found ${res.jobs.length} active jobs on the web!`);
+        }
       }
-      qc.invalidateQueries({ queryKey: ["jobs"] });
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Search failed");
     } finally {
       setSearching(false);
+    }
+  };
+
+  const handleImportJob = async (job: any) => {
+    setImportingJobUrl(job.url);
+    try {
+      const res = await importJobFn({
+        data: {
+          title: job.title,
+          company: job.company,
+          location: job.location,
+          remote: job.remote,
+          url: job.url,
+          description: job.description,
+        },
+      });
+      if (res.alreadyExists) {
+        toast.info(`${job.title} at ${job.company} is already in your pipeline.`);
+      } else {
+        toast.success(`Added ${job.title} to pipeline`);
+      }
+      // Update local status so UI changes to "Added"
+      setDiscoveredJobs((prev) =>
+        prev
+          ? prev.map((j) => (j.url === job.url ? { ...j, alreadyInPipeline: true } : j))
+          : null
+      );
+      qc.invalidateQueries({ queryKey: ["jobs"] });
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to import job");
+    } finally {
+      setImportingJobUrl(null);
+    }
+  };
+
+  const handleImportAll = async () => {
+    if (!discoveredJobs || discoveredJobs.length === 0) return;
+    const toImport = discoveredJobs.filter((j) => !j.alreadyInPipeline);
+    if (toImport.length === 0) {
+      toast.info("All discovered jobs are already in your pipeline.");
+      return;
+    }
+    setImportingAll(true);
+    let count = 0;
+    try {
+      for (const job of toImport) {
+        await importJobFn({
+          data: {
+            title: job.title,
+            company: job.company,
+            location: job.location,
+            remote: job.remote,
+            url: job.url,
+            description: job.description,
+          },
+        });
+        count++;
+      }
+      toast.success(`Imported ${count} new jobs to your pipeline!`);
+      setDiscoveredJobs((prev) =>
+        prev ? prev.map((j) => ({ ...j, alreadyInPipeline: true })) : null
+      );
+      qc.invalidateQueries({ queryKey: ["jobs"] });
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to import some jobs");
+    } finally {
+      setImportingAll(false);
     }
   };
 
@@ -307,6 +474,123 @@ function JobsPage() {
         </label>
         {searching && <SearchingOverlay query={searchQ} location={searchLoc} />}
       </div>
+
+      {discoveredJobs && (
+        <div className="mb-8 rounded-xl border border-border bg-card/45 p-6 backdrop-blur-sm shadow-lift animate-fade-in">
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="font-display text-xl font-semibold flex items-center gap-2">
+                <Sparkles className="h-5 w-5 text-accent animate-pulse" />
+                Discovered Jobs on the Web ({discoveredJobs.length})
+              </h2>
+              <p className="text-xs text-muted-foreground">
+                Active job postings retrieved and cleaned by AI. Select which roles to import into your pipeline.
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleImportAll}
+                disabled={importingAll || discoveredJobs.every((j) => j.alreadyInPipeline)}
+              >
+                {importingAll ? (
+                  <>
+                    <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                    Importing...
+                  </>
+                ) : (
+                  <>
+                    <Plus className="mr-1.5 h-3.5 w-3.5" />
+                    Import All
+                  </>
+                )}
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                onClick={() => setDiscoveredJobs(null)}
+                title="Dismiss search results"
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {discoveredJobs.map((job) => {
+              const getSourceBadge = (source: string) => {
+                const src = source.toLowerCase();
+                if (src === "linkedin") return "bg-blue-500/10 text-blue-500 border-blue-500/20";
+                if (src === "indeed") return "bg-indigo-500/10 text-indigo-500 border-indigo-500/20";
+                if (src === "naukri") return "bg-amber-500/10 text-amber-500 border-amber-500/20";
+                if (src === "instahyre" || src === "cutshort" || src === "hirist") return "bg-rose-500/10 text-rose-500 border-rose-500/20";
+                return "bg-primary/10 text-primary border-primary/20";
+              };
+
+              return (
+                <div
+                  key={job.url}
+                  className="flex flex-col justify-between rounded-xl border border-border bg-card/60 p-4 transition-all duration-300 hover:-translate-y-1 hover:border-primary/20 hover:shadow-lift"
+                >
+                  <div>
+                    <div className="mb-2 flex items-start justify-between gap-2">
+                      <Badge className={getSourceBadge(job.source)} variant="outline">
+                        {job.source}
+                      </Badge>
+                      {job.remote && (
+                        <Badge className="bg-purple-500/10 text-purple-500 border-purple-500/20" variant="outline">
+                          Remote
+                        </Badge>
+                      )}
+                    </div>
+                    <h3 className="font-display font-medium leading-snug line-clamp-1 text-foreground" title={job.title}>
+                      {job.title}
+                    </h3>
+                    <p className="text-xs text-muted-foreground font-medium mb-2">{job.company}</p>
+                    {job.location && (
+                      <div className="mb-3 flex items-center gap-1 text-[11px] text-muted-foreground">
+                        <span className="shrink-0">📍</span>
+                        <span className="truncate">{job.location}</span>
+                      </div>
+                    )}
+                    <p className="mb-4 text-xs text-muted-foreground line-clamp-3 leading-relaxed">
+                      {job.description}
+                    </p>
+                  </div>
+                  <div className="flex gap-2 border-t border-border/55 pt-3">
+                    <Button
+                      className="flex-1 text-xs"
+                      size="sm"
+                      variant={job.alreadyInPipeline ? "secondary" : "default"}
+                      onClick={() => handleImportJob(job)}
+                      disabled={job.alreadyInPipeline || importingJobUrl === job.url}
+                    >
+                      {importingJobUrl === job.url ? (
+                        <Loader2 className="mr-1.5 h-3 w-3 animate-spin" />
+                      ) : job.alreadyInPipeline ? (
+                        "✓ Added"
+                      ) : (
+                        "Add to Pipeline"
+                      )}
+                    </Button>
+                    <a
+                      href={job.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center justify-center rounded-md border border-input bg-background p-2 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                      title="View original posting"
+                    >
+                      <ExternalLink className="h-3.5 w-3.5" />
+                    </a>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       <div className="mb-8 rounded-xl border border-border bg-card p-4">
         <div className="mb-2 flex items-center gap-2 text-sm font-medium">
