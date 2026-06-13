@@ -13,6 +13,8 @@ export default defineConfig({
       server: { entry: "server" },
     }),
     react(),
-    nitro(),
+    nitro({
+      noExternals: ["tslib"],
+    }),
   ],
 });
