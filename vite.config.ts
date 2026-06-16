@@ -15,6 +15,9 @@ export default defineConfig({
     react(),
     nitro({
       noExternals: ["tslib"],
+      externals: {
+        inline: ["tslib"],
+      },
     }),
   ],
 });
