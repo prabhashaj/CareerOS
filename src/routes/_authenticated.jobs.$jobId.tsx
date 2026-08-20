@@ -7,7 +7,7 @@ import ReactMarkdown from "react-markdown";
 import { ArrowLeft, ExternalLink, Sparkles, Wand2, FileText, MessageSquare, Send, Download, Save, ShieldCheck, GraduationCap, Mic, Brain, RefreshCw } from "lucide-react";
 import { getJob } from "@/lib/jobs.functions";
 import { rankJob } from "@/lib/ranking.functions";
-import { tailorResume, generateCoverLetter, generateAnswer } from "@/lib/tailoring.functions";
+import { generateCoverLetter, generateAnswer } from "@/lib/tailoring.functions";
 import { runApplyPipeline } from "@/lib/orchestration.functions";
 import { getApplicationForJob, updateApplicationStatus, updateApplicationContent, type ApplicationStatus } from "@/lib/applications.functions";
 import { reviewApplicationDraft, type ReviewResult } from "@/lib/reviewer.functions";
@@ -45,7 +45,6 @@ function JobDetail() {
   const getJobFn = useServerFn(getJob);
   const getAppFn = useServerFn(getApplicationForJob);
   const rank = useServerFn(rankJob);
-  const tailor = useServerFn(tailorResume);
   const cover = useServerFn(generateCoverLetter);
   const answerFn = useServerFn(generateAnswer);
   const pipeline = useServerFn(runApplyPipeline);
@@ -62,9 +61,7 @@ function JobDetail() {
 
   const [busy, setBusy] = useState<string | null>(null);
   const [question, setQuestion] = useState("");
-  const [resumeDraft, setResumeDraft] = useState("");
   const [coverDraft, setCoverDraft] = useState("");
-  const [resumeRefine, setResumeRefine] = useState("");
   const [coverRefine, setCoverRefine] = useState("");
   const [review, setReview] = useState<ReviewResult | null>(null);
   const [upskill, setUpskill] = useState<Awaited<ReturnType<typeof upskillPlan>> | null>(null);
@@ -88,9 +85,8 @@ function JobDetail() {
 
   // Sync drafts when the application data changes.
   useEffect(() => {
-    setResumeDraft(app.data?.tailored_resume ?? "");
     setCoverDraft(app.data?.cover_letter ?? "");
-  }, [app.data?.id, app.data?.tailored_resume, app.data?.cover_letter]);
+  }, [app.data?.id, app.data?.cover_letter]);
 
 
   const invalidate = () => {
@@ -207,56 +203,21 @@ function JobDetail() {
         </TabsContent>
 
         <TabsContent value="resume" className="mt-4">
-          <div className="rounded-xl border border-border bg-card p-5">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <h3 className="font-medium">Tailored resume</h3>
-              <div className="flex flex-wrap gap-2">
-                <Button asChild size="sm" variant="default" className="shadow-xs">
-                  <Link to="/studio" search={{ jobId }}>
-                    <Sparkles className="mr-2 h-4 w-4" /> Open in Resume Studio
-                  </Link>
-                </Button>
-                <Button size="sm" variant="outline" disabled={!!busy} onClick={() => run("resume", () => tailor({ data: { job_id: jobId } }), "Resume tailored")}>
-                  <Sparkles className="mr-2 h-4 w-4" /> {busy === "resume" ? "Generating…" : a?.tailored_resume ? "Regenerate" : "Generate"}
-                </Button>
-                <Button size="sm" variant="outline" disabled={!a || !resumeDraft.trim() || resumeDraft === (a?.tailored_resume ?? "")}
-                  onClick={() => a && run("save-resume", () => saveContent({ data: { id: a.id, tailored_resume: resumeDraft } }), "Resume saved")}>
-                  <Save className="mr-2 h-4 w-4" /> {busy === "save-resume" ? "Saving…" : "Save"}
-                </Button>
-                <Button size="sm" disabled={!resumeDraft.trim()}
-                  onClick={() => downloadTextAsPdf({ filename: `resume-${j.company}-${j.title}.pdf`.replace(/\s+/g, "_"), body: resumeDraft })}>
-                  <Download className="mr-2 h-4 w-4" /> PDF
-                </Button>
-              </div>
+          <div className="rounded-xl border border-border bg-card p-8 md:p-12 text-center flex flex-col items-center justify-center">
+            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-primary mb-4">
+              <Sparkles className="h-7 w-7" />
             </div>
-            {a?.tailored_resume || resumeDraft ? (
-              <Textarea
-                className="mt-4 min-h-[60vh] font-mono text-sm"
-                value={resumeDraft}
-                onChange={(e) => setResumeDraft(e.target.value)}
-                placeholder="Your tailored resume will appear here. Edit freely before saving or exporting."
-              />
-            ) : (
-              <p className="mt-3 text-sm text-muted-foreground">Generate an ATS-friendly resume grounded in your profile and KB, then edit and export.</p>
-            )}
-            {a?.tailored_resume && (
-              <div className="mt-3 flex flex-wrap items-center gap-2">
-                <Input
-                  className="flex-1 min-w-[240px]"
-                  placeholder="Refine instruction — e.g. shorten to one page, emphasize React leadership"
-                  value={resumeRefine}
-                  onChange={(e) => setResumeRefine(e.target.value)}
-                />
-                <Button size="sm" variant="outline" disabled={!!busy || !a || resumeRefine.trim().length < 3}
-                  onClick={() => a && run("refine-resume", async () => {
-                    const r = await refineFn({ data: { application_id: a.id, target: "resume", instruction: resumeRefine.trim() } });
-                    setResumeDraft(r.text);
-                    setResumeRefine("");
-                  }, "Resume refined")}>
-                  <RefreshCw className="mr-2 h-4 w-4" /> {busy === "refine-resume" ? "Refining…" : "Refine"}
-                </Button>
-              </div>
-            )}
+            <h3 className="text-xl font-semibold">Resume Studio</h3>
+            <p className="mt-2 max-w-md text-sm text-muted-foreground">
+              Tailor and fine-tune your ATS-friendly resume specifically for {j.title} at {j.company} using our interactive Resume Studio.
+            </p>
+            <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
+              <Button asChild size="lg" className="shadow-xs font-semibold">
+                <Link to="/studio" search={{ jobId }}>
+                  <Sparkles className="mr-2 h-4 w-4" /> Open in Resume Studio
+                </Link>
+              </Button>
+            </div>
           </div>
         </TabsContent>
 
