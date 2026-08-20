@@ -7,7 +7,7 @@ import {
   ArrowRight,
   FileText,
   Search,
-  ShieldCheck,
+  ClipboardCheck,
   Sparkles,
   TrendingUp,
   BookOpen,
@@ -330,13 +330,11 @@ function Dashboard() {
             </div>
             <div className="font-display text-6xl">{avgScore == null ? "—" : `${avgScore}%`}</div>
             <p className="mt-2 text-sm text-muted-foreground">Average AI match score across your applications.</p>
-            {pendingReviews > 0 && (
-              <Button asChild variant="outline" className="mt-6 w-full">
-                <Link to="/review">
-                  <ShieldCheck className="mr-2 h-4 w-4" /> {pendingReviews} pending review{pendingReviews === 1 ? "" : "s"}
-                </Link>
-              </Button>
-            )}
+            <Button asChild variant="outline" className="mt-6 w-full">
+              <Link to="/applications">
+                <ClipboardCheck className="mr-2 h-4 w-4" /> View applications
+              </Link>
+            </Button>
           </div>
         </div>
       </div>

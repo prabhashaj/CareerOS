@@ -4,7 +4,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 import { useEffect, useState } from "react";
 import ReactMarkdown from "react-markdown";
-import { ArrowLeft, ExternalLink, Sparkles, Wand2, FileText, MessageSquare, Send, Download, Save, ShieldCheck, GraduationCap, Mic, Brain, RefreshCw, Zap, Bot, Terminal, Copy, Check } from "lucide-react";
+import { ArrowLeft, ExternalLink, Sparkles, Wand2, FileText, MessageSquare, Send, Download, Save, ShieldCheck, GraduationCap, Mic, Brain, RefreshCw } from "lucide-react";
 import { getJob } from "@/lib/jobs.functions";
 import { rankJob } from "@/lib/ranking.functions";
 import { generateCoverLetter, generateAnswer } from "@/lib/tailoring.functions";
@@ -24,13 +24,6 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 
 
 export const Route = createFileRoute("/_authenticated/jobs/$jobId")({
@@ -67,8 +60,6 @@ function JobDetail() {
   const app = useQuery({ queryKey: ["app-for-job", jobId], queryFn: () => getAppFn({ data: { job_id: jobId } }) });
 
   const [busy, setBusy] = useState<string | null>(null);
-  const [agentModalOpen, setAgentModalOpen] = useState(false);
-  const [copiedCmd, setCopiedCmd] = useState(false);
   const [question, setQuestion] = useState("");
   const [coverDraft, setCoverDraft] = useState("");
   const [coverRefine, setCoverRefine] = useState("");
@@ -144,13 +135,6 @@ function JobDetail() {
         </div>
 
         <div className="flex flex-wrap gap-2">
-          <Button
-            variant="default"
-            className="shadow-xs font-semibold bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white border-0"
-            onClick={() => setAgentModalOpen(true)}
-          >
-            <Zap className="mr-2 h-4 w-4" /> Apply with Chrome Agent
-          </Button>
           <Button asChild variant="outline" className="shadow-xs font-semibold">
             <Link to="/studio" search={{ jobId }}>
               <Sparkles className="mr-2 h-4 w-4 text-primary" /> Tailor in Studio
@@ -583,78 +567,6 @@ function JobDetail() {
           </div>
         </div>
       )}
-
-      <Dialog open={agentModalOpen} onOpenChange={setAgentModalOpen}>
-        <DialogContent className="sm:max-w-xl">
-          <DialogHeader>
-            <div className="flex items-center gap-2">
-              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-500/10 text-blue-500">
-                <Zap className="h-5 w-5" />
-              </div>
-              <div>
-                <DialogTitle className="text-xl">Chrome Agent (CDP) Auto-Apply</DialogTitle>
-                <DialogDescription>
-                  Apply directly in your real Chrome browser with full anti-bot & CAPTCHA resistance.
-                </DialogDescription>
-              </div>
-            </div>
-          </DialogHeader>
-
-          <div className="mt-4 space-y-4">
-            <div className="rounded-xl border border-border bg-secondary/40 p-4">
-              <div className="flex items-start gap-3">
-                <Bot className="mt-0.5 h-5 w-5 text-blue-500 shrink-0" />
-                <div className="space-y-1">
-                  <div className="text-sm font-semibold">Method 1: CareerOS Chrome Extension (1-Click)</div>
-                  <p className="text-xs text-muted-foreground">
-                    Open the job application page in Chrome, click the extension icon, and select <strong className="text-foreground">⚡ Autofill with CDP Agent</strong>. It injects answers and tailored materials with genuine browser events.
-                  </p>
-                  {j.source_url && (
-                    <div className="pt-2">
-                      <Button asChild size="sm" variant="outline" className="text-xs h-8">
-                        <a href={j.source_url} target="_blank" rel="noreferrer">
-                          <ExternalLink className="mr-1.5 h-3.5 w-3.5" /> Open Application Page in Chrome
-                        </a>
-                      </Button>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            <div className="rounded-xl border border-border bg-secondary/40 p-4">
-              <div className="flex items-start gap-3">
-                <Terminal className="mt-0.5 h-5 w-5 text-indigo-500 shrink-0" />
-                <div className="space-y-1 flex-1 min-w-0">
-                  <div className="text-sm font-semibold">Method 2: Local CLI Agent (`chrome-agent`)</div>
-                  <p className="text-xs text-muted-foreground">
-                    Run the Python CDP runner with your Chrome remote debugging port:
-                  </p>
-                  <div className="mt-2 flex items-center gap-2 rounded-lg bg-background p-2.5 font-mono text-xs text-muted-foreground border border-border">
-                    <span className="truncate flex-1">
-                      {`python scripts/chrome_agent_runner.py --url "${j.source_url ?? "https://..."}"`}
-                    </span>
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      className="h-7 w-7 shrink-0"
-                      onClick={() => {
-                        navigator.clipboard.writeText(`python scripts/chrome_agent_runner.py --url "${j.source_url ?? ""}"`);
-                        setCopiedCmd(true);
-                        toast.success("Command copied to clipboard");
-                        setTimeout(() => setCopiedCmd(false), 2000);
-                      }}
-                    >
-                      {copiedCmd ? <Check className="h-3.5 w-3.5 text-success" /> : <Copy className="h-3.5 w-3.5" />}
-                    </Button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }
-

@@ -45,7 +45,6 @@ const studio = [
 
 const pipeline = [
   { title: "Applications", url: "/applications", icon: ClipboardCheck },
-  { title: "Review queue", url: "/review", icon: ShieldCheck },
   { title: "Analytics", url: "/analytics", icon: BarChart3 },
 ];
 
