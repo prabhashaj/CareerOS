@@ -19,6 +19,9 @@ import {
   Sprout,
   MoreHorizontal,
   Eye,
+  Terminal,
+  Copy,
+  Check,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -43,6 +46,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { z } from "zod";
 
 const jobsSearchSchema = z.object({
@@ -110,7 +120,8 @@ function JobsPage() {
   const [remoteOnly, setRemoteOnly] = useState(false);
   const [searchMode, setSearchMode] = useState<"any" | "entry_level">("any");
   const [searching, setSearching] = useState(false);
-
+  const [cdpDialogOpen, setCdpDialogOpen] = useState(false);
+  const [copiedCmd, setCopiedCmd] = useState(false);
   const [discoveredJobs, setDiscoveredJobs] = useState<any[] | null>(null);
   const [searchMeta, setSearchMeta] = useState<{
     queriedAggregators?: boolean;
@@ -446,6 +457,13 @@ function JobsPage() {
               className={`inline-flex items-center gap-1 rounded-md px-3 py-1.5 transition ${searchMode === "entry_level" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
             >
               <Sprout className="h-3 w-3" /> Entry-level
+            </button>
+            <button
+              type="button"
+              onClick={() => setCdpDialogOpen(true)}
+              className="inline-flex items-center gap-1 rounded-md px-3 py-1.5 text-primary hover:bg-primary/10 transition font-medium"
+            >
+              <Sparkles className="h-3 w-3" /> Chrome Agent Crawler
             </button>
           </div>
         </div>
@@ -845,6 +863,63 @@ function JobsPage() {
           <Button asChild className="mt-4"><Link to="/upload">Add your first job</Link></Button>
         </div>
       )}
+
+      {/* Chrome Agent Discovery Modal */}
+      <Dialog open={cdpDialogOpen} onOpenChange={setCdpDialogOpen}>
+        <DialogContent className="sm:max-w-lg border border-border bg-card text-foreground shadow-soft">
+          <DialogHeader>
+            <div className="flex items-center gap-2.5">
+              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                <Sparkles className="h-5 w-5" />
+              </div>
+              <div>
+                <DialogTitle className="font-display text-xl">Chrome Agent Job Discovery</DialogTitle>
+                <DialogDescription className="text-xs text-muted-foreground">
+                  Crawl live job boards (LinkedIn, Greenhouse, Ashby, Lever) through your Chrome session.
+                </DialogDescription>
+              </div>
+            </div>
+          </DialogHeader>
+
+          <div className="mt-4 space-y-3">
+            <div className="rounded-lg border border-border bg-background/60 p-3.5 space-y-2">
+              <div className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                <Terminal className="h-3.5 w-3.5 text-primary" /> Autonomous Background Crawler
+              </div>
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                Connects directly to your Chrome browser over DevTools Protocol, scrolls live search feeds, and syncs matched jobs into your pipeline:
+              </p>
+              <div className="flex items-center gap-2 rounded-md bg-secondary/50 p-2 font-mono text-[11px] text-foreground border border-border">
+                <code className="flex-1 truncate">
+                  {`python scripts/chrome_agent_runner.py --search "${searchQ || "Software Engineer"}" --location "${searchLoc || "Remote"}"`}
+                </code>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="h-6 w-6 shrink-0"
+                  onClick={() => {
+                    navigator.clipboard.writeText(`python scripts/chrome_agent_runner.py --search "${searchQ || "Software Engineer"}" --location "${searchLoc || "Remote"}"`);
+                    setCopiedCmd(true);
+                    toast.success("Command copied to clipboard");
+                    setTimeout(() => setCopiedCmd(false), 2000);
+                  }}
+                >
+                  {copiedCmd ? <Check className="h-3.5 w-3.5 text-primary" /> : <Copy className="h-3.5 w-3.5" />}
+                </Button>
+              </div>
+            </div>
+
+            <div className="rounded-lg border border-border bg-background/60 p-3.5 space-y-1.5">
+              <div className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                <Globe className="h-3.5 w-3.5 text-primary" /> 1-Click Page Importer
+              </div>
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                Whenever you browse any job posting on LinkedIn or direct ATS boards, click the CareerOS extension to instantly extract and save the role.
+              </p>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -4,7 +4,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 import { useEffect, useState } from "react";
 import ReactMarkdown from "react-markdown";
-import { ArrowLeft, ExternalLink, Sparkles, Wand2, FileText, MessageSquare, Send, Download, Save, ShieldCheck, GraduationCap, Mic, Brain, RefreshCw } from "lucide-react";
+import { ArrowLeft, ExternalLink, Sparkles, Wand2, FileText, MessageSquare, Send, Download, Save, ShieldCheck, GraduationCap, Mic, Brain, RefreshCw, Zap, Terminal, Copy, Check } from "lucide-react";
 import { getJob } from "@/lib/jobs.functions";
 import { rankJob } from "@/lib/ranking.functions";
 import { generateCoverLetter, generateAnswer } from "@/lib/tailoring.functions";
@@ -24,6 +24,13 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 
 export const Route = createFileRoute("/_authenticated/jobs/$jobId")({
@@ -60,6 +67,8 @@ function JobDetail() {
   const app = useQuery({ queryKey: ["app-for-job", jobId], queryFn: () => getAppFn({ data: { job_id: jobId } }) });
 
   const [busy, setBusy] = useState<string | null>(null);
+  const [agentDialogOpen, setAgentDialogOpen] = useState(false);
+  const [copied, setCopied] = useState(false);
   const [question, setQuestion] = useState("");
   const [coverDraft, setCoverDraft] = useState("");
   const [coverRefine, setCoverRefine] = useState("");
@@ -135,6 +144,9 @@ function JobDetail() {
         </div>
 
         <div className="flex flex-wrap gap-2">
+          <Button variant="default" className="shadow-xs font-semibold" onClick={() => setAgentDialogOpen(true)}>
+            <Zap className="mr-2 h-4 w-4" /> Auto-apply in Chrome
+          </Button>
           <Button asChild variant="outline" className="shadow-xs font-semibold">
             <Link to="/studio" search={{ jobId }}>
               <Sparkles className="mr-2 h-4 w-4 text-primary" /> Tailor in Studio
@@ -567,6 +579,71 @@ function JobDetail() {
           </div>
         </div>
       )}
+
+      {/* Chrome Agent Modal */}
+      <Dialog open={agentDialogOpen} onOpenChange={setAgentDialogOpen}>
+        <DialogContent className="sm:max-w-lg border border-border bg-card text-foreground shadow-soft">
+          <DialogHeader>
+            <div className="flex items-center gap-2.5">
+              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                <Zap className="h-5 w-5" />
+              </div>
+              <div>
+                <DialogTitle className="font-display text-xl">Auto-Apply with Chrome Agent</DialogTitle>
+                <DialogDescription className="text-xs text-muted-foreground">
+                  Fill application fields and tailored screening answers directly in Chrome via CDP.
+                </DialogDescription>
+              </div>
+            </div>
+          </DialogHeader>
+
+          <div className="mt-4 space-y-3">
+            {j.source_url && (
+              <div className="rounded-lg border border-border bg-background/60 p-3.5 space-y-2">
+                <div className="text-xs font-semibold text-foreground flex items-center justify-between">
+                  <span>Method 1: Direct Browser Page</span>
+                  <Badge variant="outline" className="text-[10px]">Active Job</Badge>
+                </div>
+                <p className="text-xs text-muted-foreground leading-relaxed">
+                  Open the application page and use the CareerOS extension for 1-click native autofill:
+                </p>
+                <Button asChild size="sm" className="w-full">
+                  <a href={j.source_url} target="_blank" rel="noreferrer">
+                    <ExternalLink className="mr-1.5 h-3.5 w-3.5" /> Open Application in Chrome
+                  </a>
+                </Button>
+              </div>
+            )}
+
+            <div className="rounded-lg border border-border bg-background/60 p-3.5 space-y-2">
+              <div className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                <Terminal className="h-3.5 w-3.5 text-primary" /> Method 2: Local CLI Agent (`chrome-agent`)
+              </div>
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                Connects to your Chrome session on port 9222 and applies with tailored Knowledge Base answers:
+              </p>
+              <div className="flex items-center gap-2 rounded-md bg-secondary/50 p-2 font-mono text-[11px] text-foreground border border-border">
+                <code className="flex-1 truncate">
+                  {`python scripts/chrome_agent_runner.py --url "${j.source_url || "https://..."}"`}
+                </code>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="h-6 w-6 shrink-0"
+                  onClick={() => {
+                    navigator.clipboard.writeText(`python scripts/chrome_agent_runner.py --url "${j.source_url || ""}"`);
+                    setCopied(true);
+                    toast.success("Command copied to clipboard");
+                    setTimeout(() => setCopied(false), 2000);
+                  }}
+                >
+                  {copied ? <Check className="h-3.5 w-3.5 text-primary" /> : <Copy className="h-3.5 w-3.5" />}
+                </Button>
+              </div>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
