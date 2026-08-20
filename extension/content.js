@@ -1,11 +1,8 @@
-// JobPilot content script — runs on every page.
+// CareerOS content script — runs on every page.
 // Responsibilities:
-//   1. On the JobPilot connect page: receive Supabase tokens via window.postMessage
-//      and forward them to the background service worker.
-//   2. On job application pages: when asked by the popup, detect form fields,
-//      map them to candidate data returned by the server, and fill them.
-//
-// All writes to the page are transparent and logged — nothing is auto-submitted.
+//   1. On CareerOS connect page: receive Supabase tokens via window.postMessage and forward to background.
+//   2. On job application pages: detect form fields and map to candidate data.
+//   3. On job listing pages: parse job posting metadata and full description for 1-click import into CareerOS.
 
 (function () {
   // ---------- 1. Auth bridge ----------
@@ -31,27 +28,111 @@
     }
   });
 
-  // ---------- 2. ATS detection ----------
+  // ---------- 2. ATS & Platform detection ----------
   function detectAts() {
     const host = location.hostname;
     const html = document.documentElement.outerHTML.slice(0, 50_000);
-    if (host.includes("greenhouse.io") || /grnhse|greenhouse/i.test(html)) return "greenhouse";
-    if (host.includes("lever.co")) return "lever";
-    if (host.includes("ashbyhq.com")) return "ashby";
-    if (host.includes("myworkdayjobs.com") || host.includes("workday")) return "workday";
-    if (host.includes("smartrecruiters.com")) return "smartrecruiters";
-    if (host.includes("jobvite.com")) return "jobvite";
-    if (host.includes("icims.com")) return "icims";
-    if (host.includes("linkedin.com")) return "linkedin";
-    if (host.includes("indeed.com")) return "indeed";
-    if (host.includes("bamboohr.com")) return "bamboohr";
-    if (host.includes("breezy.hr")) return "breezy";
-    if (host.includes("recruitee.com")) return "recruitee";
-    if (host.includes("workable.com")) return "workable";
-    return "generic";
+    if (host.includes("greenhouse.io") || /grnhse|greenhouse/i.test(html)) return "Greenhouse";
+    if (host.includes("lever.co")) return "Lever";
+    if (host.includes("ashbyhq.com")) return "Ashby";
+    if (host.includes("myworkdayjobs.com") || host.includes("workday")) return "Workday";
+    if (host.includes("smartrecruiters.com")) return "SmartRecruiters";
+    if (host.includes("jobvite.com")) return "Jobvite";
+    if (host.includes("icims.com")) return "iCIMS";
+    if (host.includes("linkedin.com")) return "LinkedIn";
+    if (host.includes("indeed.com")) return "Indeed";
+    if (host.includes("wellfound.com")) return "Wellfound";
+    if (host.includes("ycombinator.com")) return "YCombinator";
+    if (host.includes("bamboohr.com")) return "BambooHR";
+    if (host.includes("workable.com")) return "Workable";
+    return "Generic";
   }
 
-  // ---------- 3. Field discovery ----------
+  // ---------- 3. Job Description Extractor ----------
+  function extractJobDetails() {
+    let title = "";
+    let company = "";
+    let location = "";
+    let description = "";
+    let remote = false;
+
+    // A. Check JSON-LD schema.org/JobPosting
+    const scripts = document.querySelectorAll('script[type="application/ld+json"]');
+    for (const s of scripts) {
+      try {
+        const data = JSON.parse(s.innerText);
+        const item = Array.isArray(data) ? data.find((d) => d["@type"] === "JobPosting") : data["@type"] === "JobPosting" ? data : null;
+        if (item) {
+          title = item.title || "";
+          company = item.hiringOrganization?.name || "";
+          location = item.jobLocation?.address?.addressLocality || item.jobLocation?.address?.addressRegion || "";
+          description = item.description || "";
+          if (/remote|telecommute/i.test(item.jobLocationType || "") || /remote/i.test(description)) {
+            remote = true;
+          }
+          break;
+        }
+      } catch {
+        // ignore JSON parse error
+      }
+    }
+
+    // B. Platform-specific fallback heuristics
+    const host = window.location.hostname;
+
+    if (host.includes("linkedin.com")) {
+      title = title || document.querySelector(".job-details-jobs-unified-top-card__job-title, .topcard__title, h1")?.innerText?.trim() || "";
+      company = company || document.querySelector(".job-details-jobs-unified-top-card__company-name, .topcard__org-name-link")?.innerText?.trim() || "";
+      location = location || document.querySelector(".job-details-jobs-unified-top-card__bullet, .topcard__flavor--bullet")?.innerText?.trim() || "";
+      description = description || document.querySelector(".jobs-description__content, #job-details")?.innerText?.trim() || "";
+    } else if (host.includes("greenhouse.io")) {
+      title = title || document.querySelector("#header .app-title, .job-name, h1")?.innerText?.trim() || "";
+      company = company || document.querySelector("#header .company-name, .company-name")?.innerText?.trim() || "";
+      location = location || document.querySelector(".location")?.innerText?.trim() || "";
+      description = description || document.querySelector("#content, #main")?.innerText?.trim() || "";
+    } else if (host.includes("lever.co")) {
+      title = title || document.querySelector(".posting-headline h2, h2")?.innerText?.trim() || "";
+      company = company || document.querySelector(".main-header-logo img")?.getAttribute("alt") || "";
+      location = location || document.querySelector(".posting-categories .location")?.innerText?.trim() || "";
+      description = description || document.querySelector(".section.page-centered")?.innerText?.trim() || "";
+    } else if (host.includes("ashbyhq.com")) {
+      title = title || document.querySelector(".ashby-job-posting-heading, h1")?.innerText?.trim() || "";
+      location = location || document.querySelector(".ashby-job-posting-heading-secondary")?.innerText?.trim() || "";
+      description = description || document.querySelector(".ashby-job-posting-description")?.innerText?.trim() || "";
+    } else if (host.includes("indeed.com")) {
+      title = title || document.querySelector(".jobsearch-JobInfoHeader-title, h1")?.innerText?.trim() || "";
+      company = company || document.querySelector('[data-company-name="true"]')?.innerText?.trim() || "";
+      location = location || document.querySelector(".jobsearch-JobInfoHeader-companyLocation")?.innerText?.trim() || "";
+      description = description || document.querySelector("#jobDescriptionText")?.innerText?.trim() || "";
+    }
+
+    // Generic fallbacks
+    if (!title) {
+      title = document.querySelector("h1")?.innerText?.trim() || document.title.split(/[-|·]/)[0]?.trim() || "Untitled Position";
+    }
+    if (!company) {
+      const parts = document.title.split(/[-|·]/);
+      company = parts.length > 1 ? parts[1]?.trim() : host.split(".")[0]?.toUpperCase();
+    }
+    if (!description) {
+      description = document.querySelector("article, main, #main-content, #content, .content")?.innerText?.trim() || document.body.innerText.slice(0, 5000);
+    }
+    if (/remote|wfh|work from home/i.test(`${title} ${location} ${description.slice(0, 500)}`)) {
+      remote = true;
+    }
+
+    return {
+      title: title.replace(/\s+/g, " ").trim(),
+      company: company.replace(/\s+/g, " ").trim(),
+      location: location.replace(/\s+/g, " ").trim() || (remote ? "Remote" : null),
+      remote,
+      description: description.slice(0, 30_000).trim(),
+      source_url: window.location.href,
+      ats: detectAts(),
+    };
+  }
+
+  // ---------- 4. Field discovery ----------
   function visible(el) {
     if (!el) return false;
     const r = el.getBoundingClientRect();
@@ -73,7 +154,6 @@
       if (byId) return byId.innerText.trim();
       return aria;
     }
-    // Look for a nearby preceding label/span/div
     let prev = input.previousElementSibling;
     for (let i = 0; i < 3 && prev; i++, prev = prev.previousElementSibling) {
       const t = prev.innerText?.trim();
@@ -101,8 +181,7 @@
     }));
   }
 
-  // ---------- 4. Field mapping ----------
-  // Heuristic mapping from a field descriptor to a key in the context payload.
+  // ---------- 5. Field mapping ----------
   const MAPPERS = [
     { key: "full_name", match: /(full[\s_-]*name|your name|legal name)/i },
     { key: "first_name", match: /(first[\s_-]*name|given name|forename)/i },
@@ -177,12 +256,17 @@
     return true;
   }
 
-  // ---------- 5. Public command handler ----------
+  // ---------- 6. Public message handler ----------
   chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     (async () => {
       try {
         if (msg?.type === "PING_PAGE") {
           sendResponse({ ok: true, ats: detectAts(), url: location.href, title: document.title });
+          return;
+        }
+        if (msg?.type === "EXTRACT_JOB_DETAILS") {
+          const details = extractJobDetails();
+          sendResponse({ ok: true, details });
           return;
         }
         if (msg?.type === "SCAN_FIELDS") {
@@ -209,7 +293,6 @@
               skipped++;
               continue;
             }
-            // Prefer per-field AI answer if provided
             const aiAnswer = (ctx.answers || {})[key] ?? (ctx.answers || {})[f.label];
             const value = aiAnswer ?? ctx.profile?.[key] ?? null;
             if (value == null || value === "") {

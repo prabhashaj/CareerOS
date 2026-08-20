@@ -1,14 +1,21 @@
 {
   "manifest_version": 3,
-  "name": "JobPilot AI Assistant",
-  "version": "0.1.1",
-  "description": "Auto-fill job applications using your JobPilot AI profile, resume, and knowledge base.",
-  "permissions": ["activeTab", "storage", "scripting", "tabs"],
+  "name": "CareerOS AI & CDP Agent",
+  "version": "0.2.0",
+  "description": "Auto-apply to jobs using local Chrome DevTools Protocol (CDP), tailored resumes, and knowledge base answers.",
+  "permissions": [
+    "activeTab",
+    "storage",
+    "scripting",
+    "tabs",
+    "debugger",
+    "downloads"
+  ],
   "host_permissions": ["<all_urls>"],
   "action": {
     "default_popup": "popup.html",
     "default_icon": "icon.png",
-    "default_title": "JobPilot AI"
+    "default_title": "CareerOS Agent"
   },
   "background": { "service_worker": "background.js" },
   "icons": { "48": "icon.png", "128": "icon.png" },

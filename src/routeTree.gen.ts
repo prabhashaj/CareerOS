@@ -27,8 +27,10 @@ import { Route as AuthenticatedApplicationsRouteImport } from './routes/_authent
 import { Route as AuthenticatedAnalyticsRouteImport } from './routes/_authenticated.analytics'
 import { Route as AuthenticatedJobsIndexRouteImport } from './routes/_authenticated.jobs.index'
 import { Route as AuthenticatedJobsJobIdRouteImport } from './routes/_authenticated.jobs.$jobId'
+import { Route as ApiPublicExtensionImportJobRouteImport } from './routes/api.public.extension.import-job'
 import { Route as ApiPublicExtensionEventRouteImport } from './routes/api.public.extension.event'
 import { Route as ApiPublicExtensionContextRouteImport } from './routes/api.public.extension.context'
+import { Route as ApiPublicExtensionAgentPlanRouteImport } from './routes/api.public.extension.agent-plan'
 
 const RegisterRoute = RegisterRouteImport.update({
   id: '/register',
@@ -122,6 +124,12 @@ const AuthenticatedJobsJobIdRoute = AuthenticatedJobsJobIdRouteImport.update({
   path: '/jobs/$jobId',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
+const ApiPublicExtensionImportJobRoute =
+  ApiPublicExtensionImportJobRouteImport.update({
+    id: '/api/public/extension/import-job',
+    path: '/api/public/extension/import-job',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiPublicExtensionEventRoute = ApiPublicExtensionEventRouteImport.update({
   id: '/api/public/extension/event',
   path: '/api/public/extension/event',
@@ -131,6 +139,12 @@ const ApiPublicExtensionContextRoute =
   ApiPublicExtensionContextRouteImport.update({
     id: '/api/public/extension/context',
     path: '/api/public/extension/context',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiPublicExtensionAgentPlanRoute =
+  ApiPublicExtensionAgentPlanRouteImport.update({
+    id: '/api/public/extension/agent-plan',
+    path: '/api/public/extension/agent-plan',
     getParentRoute: () => rootRouteImport,
   } as any)
 
@@ -152,8 +166,10 @@ export interface FileRoutesByFullPath {
   '/api/agent': typeof ApiAgentRoute
   '/jobs/$jobId': typeof AuthenticatedJobsJobIdRoute
   '/jobs/': typeof AuthenticatedJobsIndexRoute
+  '/api/public/extension/agent-plan': typeof ApiPublicExtensionAgentPlanRoute
   '/api/public/extension/context': typeof ApiPublicExtensionContextRoute
   '/api/public/extension/event': typeof ApiPublicExtensionEventRoute
+  '/api/public/extension/import-job': typeof ApiPublicExtensionImportJobRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -173,8 +189,10 @@ export interface FileRoutesByTo {
   '/api/agent': typeof ApiAgentRoute
   '/jobs/$jobId': typeof AuthenticatedJobsJobIdRoute
   '/jobs': typeof AuthenticatedJobsIndexRoute
+  '/api/public/extension/agent-plan': typeof ApiPublicExtensionAgentPlanRoute
   '/api/public/extension/context': typeof ApiPublicExtensionContextRoute
   '/api/public/extension/event': typeof ApiPublicExtensionEventRoute
+  '/api/public/extension/import-job': typeof ApiPublicExtensionImportJobRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -196,8 +214,10 @@ export interface FileRoutesById {
   '/api/agent': typeof ApiAgentRoute
   '/_authenticated/jobs/$jobId': typeof AuthenticatedJobsJobIdRoute
   '/_authenticated/jobs/': typeof AuthenticatedJobsIndexRoute
+  '/api/public/extension/agent-plan': typeof ApiPublicExtensionAgentPlanRoute
   '/api/public/extension/context': typeof ApiPublicExtensionContextRoute
   '/api/public/extension/event': typeof ApiPublicExtensionEventRoute
+  '/api/public/extension/import-job': typeof ApiPublicExtensionImportJobRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -219,8 +239,10 @@ export interface FileRouteTypes {
     | '/api/agent'
     | '/jobs/$jobId'
     | '/jobs/'
+    | '/api/public/extension/agent-plan'
     | '/api/public/extension/context'
     | '/api/public/extension/event'
+    | '/api/public/extension/import-job'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -240,8 +262,10 @@ export interface FileRouteTypes {
     | '/api/agent'
     | '/jobs/$jobId'
     | '/jobs'
+    | '/api/public/extension/agent-plan'
     | '/api/public/extension/context'
     | '/api/public/extension/event'
+    | '/api/public/extension/import-job'
   id:
     | '__root__'
     | '/'
@@ -262,8 +286,10 @@ export interface FileRouteTypes {
     | '/api/agent'
     | '/_authenticated/jobs/$jobId'
     | '/_authenticated/jobs/'
+    | '/api/public/extension/agent-plan'
     | '/api/public/extension/context'
     | '/api/public/extension/event'
+    | '/api/public/extension/import-job'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -272,8 +298,10 @@ export interface RootRouteChildren {
   LoginRoute: typeof LoginRoute
   RegisterRoute: typeof RegisterRoute
   ApiAgentRoute: typeof ApiAgentRoute
+  ApiPublicExtensionAgentPlanRoute: typeof ApiPublicExtensionAgentPlanRoute
   ApiPublicExtensionContextRoute: typeof ApiPublicExtensionContextRoute
   ApiPublicExtensionEventRoute: typeof ApiPublicExtensionEventRoute
+  ApiPublicExtensionImportJobRoute: typeof ApiPublicExtensionImportJobRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -404,6 +432,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedJobsJobIdRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/api/public/extension/import-job': {
+      id: '/api/public/extension/import-job'
+      path: '/api/public/extension/import-job'
+      fullPath: '/api/public/extension/import-job'
+      preLoaderRoute: typeof ApiPublicExtensionImportJobRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/extension/event': {
       id: '/api/public/extension/event'
       path: '/api/public/extension/event'
@@ -416,6 +451,13 @@ declare module '@tanstack/react-router' {
       path: '/api/public/extension/context'
       fullPath: '/api/public/extension/context'
       preLoaderRoute: typeof ApiPublicExtensionContextRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/extension/agent-plan': {
+      id: '/api/public/extension/agent-plan'
+      path: '/api/public/extension/agent-plan'
+      fullPath: '/api/public/extension/agent-plan'
+      preLoaderRoute: typeof ApiPublicExtensionAgentPlanRouteImport
       parentRoute: typeof rootRouteImport
     }
   }
@@ -463,8 +505,10 @@ const rootRouteChildren: RootRouteChildren = {
   LoginRoute: LoginRoute,
   RegisterRoute: RegisterRoute,
   ApiAgentRoute: ApiAgentRoute,
+  ApiPublicExtensionAgentPlanRoute: ApiPublicExtensionAgentPlanRoute,
   ApiPublicExtensionContextRoute: ApiPublicExtensionContextRoute,
   ApiPublicExtensionEventRoute: ApiPublicExtensionEventRoute,
+  ApiPublicExtensionImportJobRoute: ApiPublicExtensionImportJobRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

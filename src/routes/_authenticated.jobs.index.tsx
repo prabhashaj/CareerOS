@@ -19,6 +19,11 @@ import {
   Sprout,
   MoreHorizontal,
   Eye,
+  Zap,
+  Bot,
+  Terminal,
+  Copy,
+  Check,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -43,6 +48,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { z } from "zod";
 
 const jobsSearchSchema = z.object({
@@ -111,6 +123,8 @@ function JobsPage() {
   const [searchMode, setSearchMode] = useState<"any" | "entry_level">("any");
   const [searching, setSearching] = useState(false);
 
+  const [cdpCrawlerOpen, setCdpCrawlerOpen] = useState(false);
+  const [copiedCdpCmd, setCopiedCdpCmd] = useState(false);
   const [discoveredJobs, setDiscoveredJobs] = useState<any[] | null>(null);
   const [searchMeta, setSearchMeta] = useState<{
     queriedAggregators?: boolean;
@@ -420,6 +434,13 @@ function JobsPage() {
           <p className="mt-1 text-sm text-muted-foreground">All discovered opportunities, ranked against your profile.</p>
         </div>
         <div className="flex gap-2">
+          <Button
+            variant="default"
+            className="shadow-xs font-semibold bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white border-0"
+            onClick={() => setCdpCrawlerOpen(true)}
+          >
+            <Zap className="mr-2 h-4 w-4" /> Chrome CDP Crawler
+          </Button>
           <Button variant="outline" onClick={handleRankAll}><Wand2 className="mr-2 h-4 w-4" /> Rank all</Button>
           <Button asChild><Link to="/upload"><Plus className="mr-2 h-4 w-4" /> Add manually</Link></Button>
         </div>
@@ -845,6 +866,69 @@ function JobsPage() {
           <Button asChild className="mt-4"><Link to="/upload">Add your first job</Link></Button>
         </div>
       )}
+
+      {/* CDP Crawler Modal */}
+      <Dialog open={cdpCrawlerOpen} onOpenChange={setCdpCrawlerOpen}>
+        <DialogContent className="sm:max-w-xl">
+          <DialogHeader>
+            <div className="flex items-center gap-2">
+              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-500/10 text-blue-500">
+                <Zap className="h-5 w-5" />
+              </div>
+              <div>
+                <DialogTitle className="text-xl">Chrome CDP Job Discovery & Crawler</DialogTitle>
+                <DialogDescription>
+                  Discover and scrape fresh jobs directly through your active Chrome browser using CDP.
+                </DialogDescription>
+              </div>
+            </div>
+          </DialogHeader>
+
+          <div className="mt-4 space-y-4">
+            <div className="rounded-xl border border-border bg-secondary/40 p-4">
+              <div className="flex items-start gap-3">
+                <Bot className="mt-0.5 h-5 w-5 text-blue-500 shrink-0" />
+                <div className="space-y-1">
+                  <div className="text-sm font-semibold">Method 1: 1-Click Import in Chrome Extension</div>
+                  <p className="text-xs text-muted-foreground">
+                    While browsing any job board (LinkedIn, Ashby, Greenhouse, Lever, Indeed, Workday), open the CareerOS extension and click <strong className="text-foreground">📥 Capture & Import Job to CareerOS</strong>.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-xl border border-border bg-secondary/40 p-4">
+              <div className="flex items-start gap-3">
+                <Terminal className="mt-0.5 h-5 w-5 text-indigo-500 shrink-0" />
+                <div className="space-y-1 flex-1 min-w-0">
+                  <div className="text-sm font-semibold">Method 2: Autonomous CLI Crawler (`chrome-agent`)</div>
+                  <p className="text-xs text-muted-foreground">
+                    Crawl LinkedIn and ATS boards directly using your local Chrome session:
+                  </p>
+                  <div className="mt-2 flex items-center gap-2 rounded-lg bg-background p-2.5 font-mono text-xs text-muted-foreground border border-border">
+                    <span className="truncate flex-1">
+                      {`python scripts/chrome_agent_runner.py --search "${searchQ || "AI Developer"}" --location "${searchLoc || "Remote"}"`}
+                    </span>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="h-7 w-7 shrink-0"
+                      onClick={() => {
+                        navigator.clipboard.writeText(`python scripts/chrome_agent_runner.py --search "${searchQ || "AI Developer"}" --location "${searchLoc || "Remote"}"`);
+                        setCopiedCdpCmd(true);
+                        toast.success("Crawler command copied");
+                        setTimeout(() => setCopiedCdpCmd(false), 2000);
+                      }}
+                    >
+                      {copiedCdpCmd ? <Check className="h-3.5 w-3.5 text-success" /> : <Copy className="h-3.5 w-3.5" />}
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
