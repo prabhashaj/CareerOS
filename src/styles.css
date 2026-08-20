@@ -215,4 +215,86 @@
   }
 }
 
+/* Resume document rendering — supports 1 to 4+ pages without clipping */
+.resume-page {
+  background: white;
+  color: #14171a;
+  width: 100%;
+  min-height: 297mm;
+  overflow: visible;
+  box-sizing: border-box;
+  position: relative;
+}
+
+.resume-section {
+  break-inside: auto;
+  page-break-inside: auto;
+}
+
+.resume-item {
+  break-inside: avoid !important;
+  page-break-inside: avoid !important;
+}
+
+.page-break-before {
+  break-before: page !important;
+  page-break-before: always !important;
+}
+
+.page-break-guide {
+  position: absolute;
+  left: 0;
+  right: 0;
+  border-top: 2px dashed #94a3b8;
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 12mm 15mm;
+  }
+  
+  html, body {
+    background: white !important;
+    color: black !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  body * {
+    visibility: hidden;
+  }
+
+  .resume-print,
+  .resume-print * {
+    visibility: visible;
+  }
+
+  .resume-print {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    box-shadow: none !important;
+    transform: none !important;
+    background: transparent !important;
+  }
+
+  .resume-page {
+    box-shadow: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    min-height: auto !important;
+  }
+
+  .page-break-guide {
+    display: none !important;
+  }
+}
+
 

@@ -15,8 +15,10 @@ import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ApiAgentRouteImport } from './routes/api.agent'
 import { Route as AuthenticatedUploadRouteImport } from './routes/_authenticated.upload'
+import { Route as AuthenticatedStudioRouteImport } from './routes/_authenticated.studio'
 import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticated.settings'
 import { Route as AuthenticatedReviewRouteImport } from './routes/_authenticated.review'
+import { Route as AuthenticatedResumesRouteImport } from './routes/_authenticated.resumes'
 import { Route as AuthenticatedExtensionRouteImport } from './routes/_authenticated.extension'
 import { Route as AuthenticatedEvaluationRouteImport } from './routes/_authenticated.evaluation'
 import { Route as AuthenticatedDocumentsRouteImport } from './routes/_authenticated.documents'
@@ -58,6 +60,11 @@ const AuthenticatedUploadRoute = AuthenticatedUploadRouteImport.update({
   path: '/upload',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
+const AuthenticatedStudioRoute = AuthenticatedStudioRouteImport.update({
+  id: '/studio',
+  path: '/studio',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
 const AuthenticatedSettingsRoute = AuthenticatedSettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
@@ -66,6 +73,11 @@ const AuthenticatedSettingsRoute = AuthenticatedSettingsRouteImport.update({
 const AuthenticatedReviewRoute = AuthenticatedReviewRouteImport.update({
   id: '/review',
   path: '/review',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
+const AuthenticatedResumesRoute = AuthenticatedResumesRouteImport.update({
+  id: '/resumes',
+  path: '/resumes',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
 const AuthenticatedExtensionRoute = AuthenticatedExtensionRouteImport.update({
@@ -139,8 +151,10 @@ export interface FileRoutesByFullPath {
   '/documents': typeof AuthenticatedDocumentsRoute
   '/evaluation': typeof AuthenticatedEvaluationRoute
   '/extension': typeof AuthenticatedExtensionRoute
+  '/resumes': typeof AuthenticatedResumesRoute
   '/review': typeof AuthenticatedReviewRoute
   '/settings': typeof AuthenticatedSettingsRoute
+  '/studio': typeof AuthenticatedStudioRoute
   '/upload': typeof AuthenticatedUploadRoute
   '/api/agent': typeof ApiAgentRoute
   '/jobs/$jobId': typeof AuthenticatedJobsJobIdRoute
@@ -159,8 +173,10 @@ export interface FileRoutesByTo {
   '/documents': typeof AuthenticatedDocumentsRoute
   '/evaluation': typeof AuthenticatedEvaluationRoute
   '/extension': typeof AuthenticatedExtensionRoute
+  '/resumes': typeof AuthenticatedResumesRoute
   '/review': typeof AuthenticatedReviewRoute
   '/settings': typeof AuthenticatedSettingsRoute
+  '/studio': typeof AuthenticatedStudioRoute
   '/upload': typeof AuthenticatedUploadRoute
   '/api/agent': typeof ApiAgentRoute
   '/jobs/$jobId': typeof AuthenticatedJobsJobIdRoute
@@ -181,8 +197,10 @@ export interface FileRoutesById {
   '/_authenticated/documents': typeof AuthenticatedDocumentsRoute
   '/_authenticated/evaluation': typeof AuthenticatedEvaluationRoute
   '/_authenticated/extension': typeof AuthenticatedExtensionRoute
+  '/_authenticated/resumes': typeof AuthenticatedResumesRoute
   '/_authenticated/review': typeof AuthenticatedReviewRoute
   '/_authenticated/settings': typeof AuthenticatedSettingsRoute
+  '/_authenticated/studio': typeof AuthenticatedStudioRoute
   '/_authenticated/upload': typeof AuthenticatedUploadRoute
   '/api/agent': typeof ApiAgentRoute
   '/_authenticated/jobs/$jobId': typeof AuthenticatedJobsJobIdRoute
@@ -203,8 +221,10 @@ export interface FileRouteTypes {
     | '/documents'
     | '/evaluation'
     | '/extension'
+    | '/resumes'
     | '/review'
     | '/settings'
+    | '/studio'
     | '/upload'
     | '/api/agent'
     | '/jobs/$jobId'
@@ -223,8 +243,10 @@ export interface FileRouteTypes {
     | '/documents'
     | '/evaluation'
     | '/extension'
+    | '/resumes'
     | '/review'
     | '/settings'
+    | '/studio'
     | '/upload'
     | '/api/agent'
     | '/jobs/$jobId'
@@ -244,8 +266,10 @@ export interface FileRouteTypes {
     | '/_authenticated/documents'
     | '/_authenticated/evaluation'
     | '/_authenticated/extension'
+    | '/_authenticated/resumes'
     | '/_authenticated/review'
     | '/_authenticated/settings'
+    | '/_authenticated/studio'
     | '/_authenticated/upload'
     | '/api/agent'
     | '/_authenticated/jobs/$jobId'
@@ -308,6 +332,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedUploadRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/studio': {
+      id: '/_authenticated/studio'
+      path: '/studio'
+      fullPath: '/studio'
+      preLoaderRoute: typeof AuthenticatedStudioRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
     '/_authenticated/settings': {
       id: '/_authenticated/settings'
       path: '/settings'
@@ -320,6 +351,13 @@ declare module '@tanstack/react-router' {
       path: '/review'
       fullPath: '/review'
       preLoaderRoute: typeof AuthenticatedReviewRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/resumes': {
+      id: '/_authenticated/resumes'
+      path: '/resumes'
+      fullPath: '/resumes'
+      preLoaderRoute: typeof AuthenticatedResumesRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/extension': {
@@ -410,8 +448,10 @@ interface AuthenticatedRouteChildren {
   AuthenticatedDocumentsRoute: typeof AuthenticatedDocumentsRoute
   AuthenticatedEvaluationRoute: typeof AuthenticatedEvaluationRoute
   AuthenticatedExtensionRoute: typeof AuthenticatedExtensionRoute
+  AuthenticatedResumesRoute: typeof AuthenticatedResumesRoute
   AuthenticatedReviewRoute: typeof AuthenticatedReviewRoute
   AuthenticatedSettingsRoute: typeof AuthenticatedSettingsRoute
+  AuthenticatedStudioRoute: typeof AuthenticatedStudioRoute
   AuthenticatedUploadRoute: typeof AuthenticatedUploadRoute
   AuthenticatedJobsJobIdRoute: typeof AuthenticatedJobsJobIdRoute
   AuthenticatedJobsIndexRoute: typeof AuthenticatedJobsIndexRoute
@@ -425,8 +465,10 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedDocumentsRoute: AuthenticatedDocumentsRoute,
   AuthenticatedEvaluationRoute: AuthenticatedEvaluationRoute,
   AuthenticatedExtensionRoute: AuthenticatedExtensionRoute,
+  AuthenticatedResumesRoute: AuthenticatedResumesRoute,
   AuthenticatedReviewRoute: AuthenticatedReviewRoute,
   AuthenticatedSettingsRoute: AuthenticatedSettingsRoute,
+  AuthenticatedStudioRoute: AuthenticatedStudioRoute,
   AuthenticatedUploadRoute: AuthenticatedUploadRoute,
   AuthenticatedJobsJobIdRoute: AuthenticatedJobsJobIdRoute,
   AuthenticatedJobsIndexRoute: AuthenticatedJobsIndexRoute,

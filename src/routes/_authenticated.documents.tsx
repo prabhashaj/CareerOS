@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 import { useState } from "react";
-import { Trash2, Plus, FileText, Eye, Download } from "lucide-react";
+import { Trash2, Plus, FileText, Eye, Download, Sparkles } from "lucide-react";
 import { listDocuments, deleteDocument, getDocument, downloadDocument } from "@/lib/documents.functions";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
@@ -47,13 +47,6 @@ function DocumentsPage() {
         }
       }
       if (!filename) {
-        // Fallback: use title and mime_type from the viewing state (if available) or from the document?
-        // We don't have the document here, so we'll use a generic name.
-        // Alternatively, we could fetch the document again, but we already have it in the viewing state?
-        // We are calling handleDownload only when viewing is set, so we can use viewing?.title and viewing?.mime_type
-        // But note: the viewing state might not be set for this document? We are passing the id, and we have the viewing state only if we have viewed it.
-        // To avoid complexity, we'll use a fallback of "document" plus extension from the mime_type we might get from the response?
-        // Actually, we have the response, so we can get the mime_type from the response headers.
         const mimeType = response.headers.get('Content-Type') || 'application/octet-stream';
         const extension = mimeType.split('/')[1];
         filename = `document.${extension}`;
@@ -87,7 +80,12 @@ function DocumentsPage() {
           <h1 className="text-3xl font-semibold tracking-tight">Documents</h1>
           <p className="mt-1 text-sm text-muted-foreground">Resumes and knowledge-base files.</p>
         </div>
-        <Button asChild><Link to="/upload"><Plus className="mr-2 h-4 w-4" /> Add document</Link></Button>
+        <div className="flex items-center gap-2">
+          <Button asChild variant="outline">
+            <Link to="/resumes"><Sparkles className="mr-2 h-4 w-4 text-primary" /> Resume Studio</Link>
+          </Button>
+          <Button asChild><Link to="/upload"><Plus className="mr-2 h-4 w-4" /> Add document</Link></Button>
+        </div>
       </div>
 
       {isLoading ? (

@@ -139,6 +139,11 @@ function JobDetail() {
         </div>
 
         <div className="flex flex-wrap gap-2">
+          <Button asChild variant="outline" className="shadow-xs font-semibold">
+            <Link to="/studio" search={{ jobId }}>
+              <Sparkles className="mr-2 h-4 w-4 text-primary" /> Tailor in Studio
+            </Link>
+          </Button>
           <Button variant="outline" disabled={!!busy} onClick={() => run("rank", () => rank({ data: { job_id: jobId, persist: true } }), "Ranked")}>
             <Sparkles className="mr-2 h-4 w-4" /> {busy === "rank" ? "Ranking…" : "Rank"}
           </Button>
@@ -206,6 +211,11 @@ function JobDetail() {
             <div className="flex flex-wrap items-center justify-between gap-2">
               <h3 className="font-medium">Tailored resume</h3>
               <div className="flex flex-wrap gap-2">
+                <Button asChild size="sm" variant="default" className="shadow-xs">
+                  <Link to="/studio" search={{ jobId }}>
+                    <Sparkles className="mr-2 h-4 w-4" /> Open in Resume Studio
+                  </Link>
+                </Button>
                 <Button size="sm" variant="outline" disabled={!!busy} onClick={() => run("resume", () => tailor({ data: { job_id: jobId } }), "Resume tailored")}>
                   <Sparkles className="mr-2 h-4 w-4" /> {busy === "resume" ? "Generating…" : a?.tailored_resume ? "Regenerate" : "Generate"}
                 </Button>

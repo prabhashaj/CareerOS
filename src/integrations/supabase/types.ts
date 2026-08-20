@@ -436,6 +436,129 @@ export type Database = {
         }
         Relationships: []
       }
+      resumes: {
+        Row: {
+          content: Json
+          created_at: string
+          created_from_job_id: string | null
+          id: string
+          template_id: string
+          title: string
+          updated_at: string
+          user_id: string
+          version: number
+        }
+        Insert: {
+          content?: Json
+          created_at?: string
+          created_from_job_id?: string | null
+          id?: string
+          template_id?: string
+          title?: string
+          updated_at?: string
+          user_id: string
+          version?: number
+        }
+        Update: {
+          content?: Json
+          created_at?: string
+          created_from_job_id?: string | null
+          id?: string
+          template_id?: string
+          title?: string
+          updated_at?: string
+          user_id?: string
+          version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "resumes_created_from_job_id_fkey"
+            columns: ["created_from_job_id"]
+            isOneToOne: false
+            referencedRelation: "jobs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      resume_versions: {
+        Row: {
+          content: Json
+          created_at: string
+          id: string
+          label: string
+          resume_id: string
+          template_id: string
+          user_id: string
+          version: number
+        }
+        Insert: {
+          content?: Json
+          created_at?: string
+          id?: string
+          label?: string
+          resume_id: string
+          template_id?: string
+          user_id: string
+          version?: number
+        }
+        Update: {
+          content?: Json
+          created_at?: string
+          id?: string
+          label?: string
+          resume_id?: string
+          template_id?: string
+          user_id?: string
+          version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "resume_versions_resume_id_fkey"
+            columns: ["resume_id"]
+            isOneToOne: false
+            referencedRelation: "resumes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      agent_changelogs: {
+        Row: {
+          created_at: string
+          id: string
+          match_score: number | null
+          missing_keywords: string[]
+          resume_id: string
+          summary_of_changes: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          match_score?: number | null
+          missing_keywords?: string[]
+          resume_id: string
+          summary_of_changes: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          match_score?: number | null
+          missing_keywords?: string[]
+          resume_id?: string
+          summary_of_changes?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "agent_changelogs_resume_id_fkey"
+            columns: ["resume_id"]
+            isOneToOne: false
+            referencedRelation: "resumes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never

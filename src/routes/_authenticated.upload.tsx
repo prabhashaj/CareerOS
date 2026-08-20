@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
@@ -235,6 +235,20 @@ function ResumeUploader() {
 
   return (
     <form onSubmit={handleSubmit} className="mt-6 space-y-4 rounded-xl border border-border bg-card p-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-xl border border-primary/20 bg-primary/5 p-4">
+        <div>
+          <p className="font-semibold text-sm text-foreground flex items-center gap-1.5">
+            <Sparkles className="size-4 text-primary" /> Looking to build or tailor a full resume?
+          </p>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Use Resume Studio for multi-template visual rendering, ATS optimization, and PDF/DOCX downloads.
+          </p>
+        </div>
+        <Button asChild size="sm" variant="default" className="shadow-xs shrink-0">
+          <Link to="/resumes">Open Resume Studio</Link>
+        </Button>
+      </div>
+
       <div>
         <Label>Document type</Label>
         <select

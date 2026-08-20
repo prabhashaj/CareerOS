@@ -12,6 +12,7 @@ import {
   LogOut,
   Puzzle,
   Compass,
+  Sparkles,
 } from "lucide-react";
 
 import {
@@ -35,6 +36,11 @@ const discovery = [
   { title: "Find jobs", url: "/jobs", icon: Search },
   { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard },
   { title: "Career discovery", url: "/career", icon: Compass },
+];
+
+const studio = [
+  { title: "Resume Studio", url: "/studio", icon: Sparkles },
+  { title: "My Resumes", url: "/resumes", icon: FileText },
 ];
 
 const pipeline = [
@@ -97,6 +103,7 @@ export function AppSidebar() {
       </SidebarHeader>
       <SidebarContent>
         {renderGroup("Discover", discovery)}
+        {renderGroup("Resume Studio", studio)}
         {renderGroup("Pipeline", pipeline)}
         {renderGroup("Library", library)}
       </SidebarContent>

@@ -140,6 +140,12 @@ function Dashboard() {
             </Button>
           </div>
           <div className="mt-4 flex flex-wrap gap-2 text-xs">
+            <Link to="/studio" className="rounded-full bg-accent/20 border border-accent/40 px-3 py-1.5 text-accent font-semibold transition-colors hover:bg-accent/30">
+              <Sparkles className="inline-block mr-1 h-3.5 w-3.5" /> Resume Studio →
+            </Link>
+            <Link to="/resumes" className="rounded-full bg-background/10 px-3 py-1.5 text-primary-foreground/80 transition-colors hover:bg-background/20">
+              My Resumes →
+            </Link>
             <Link to="/upload" className="rounded-full bg-background/10 px-3 py-1.5 text-primary-foreground/80 transition-colors hover:bg-background/20">
               Paste a URL →
             </Link>
