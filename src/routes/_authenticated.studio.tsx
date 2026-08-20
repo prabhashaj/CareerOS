@@ -74,7 +74,7 @@ type LeftTab = "form" | "json";
 function StudioPage() {
   const { user } = useAuth();
   const qc = useQueryClient();
-  const { registerStudioSession, setMessages } = useAgentContext();
+  const { registerStudioSession, updateStudioSession, setMessages } = useAgentContext();
   const { resumeId, jobId } = useSearch({ from: "/_authenticated/studio" });
 
   const [content, setContent] = useState<ResumeContent>(starterResume());
@@ -350,9 +350,8 @@ function StudioPage() {
     [versions],
   );
 
-  // Register this studio session with the global AgentContext
-  useEffect(() => {
-    return registerStudioSession({
+  const currentSessionData = useMemo(
+    () => ({
       content,
       template,
       setContent,
@@ -372,19 +371,30 @@ function StudioPage() {
         : null,
       versions: formattedVersions,
       currentResumeId,
-    });
-  }, [
-    content,
-    template,
-    saveResume,
-    createCheckpoint,
-    handleRevertToCheckpoint,
-    handleRevertLastChange,
-    jobRow,
-    formattedVersions,
-    currentResumeId,
-    registerStudioSession,
-  ]);
+    }),
+    [
+      content,
+      template,
+      saveResume,
+      createCheckpoint,
+      handleRevertToCheckpoint,
+      handleRevertLastChange,
+      jobRow,
+      formattedVersions,
+      currentResumeId,
+    ],
+  );
+
+  // Register session lifecycle on mount and unregister on unmount
+  useEffect(() => {
+    return registerStudioSession(currentSessionData);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [registerStudioSession]);
+
+  // Keep ref updated on every change without triggering parent state re-renders
+  useEffect(() => {
+    updateStudioSession(currentSessionData);
+  }, [currentSessionData, updateStudioSession]);
 
   const applyJsonEdit = () => {
     try {

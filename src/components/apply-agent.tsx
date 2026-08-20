@@ -1,49 +1,52 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import ReactMarkdown from "react-markdown";
-import { toast } from "sonner";
 import {
   MessageCircle,
   X,
   Send,
   Sparkles,
   Loader2,
-  History,
-  RotateCcw,
   Check,
+  RotateCcw,
+  History,
   Layers,
-  FileText,
   Briefcase,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { useAgentContext, type AgentChatMessage } from "@/hooks/use-agent-context";
+import { cn } from "@/lib/utils";
+import { toast } from "sonner";
+import ReactMarkdown from "react-markdown";
+import {
+  useAgentContext,
+  type AgentChatMessage,
+} from "@/hooks/use-agent-context";
 import { tailorResume } from "@/lib/agent.functions";
 import { normalizeResume, type ResumeContent } from "@/lib/resume";
-import { cn } from "@/lib/utils";
 
 const STUDIO_SUGGESTIONS = [
-  "Quantify my achievements with metrics",
-  "Add more TypeScript and cloud keywords",
-  "Make bullet points punchy and concise",
-  "Tailor my summary for leadership roles",
+  "Quantify impact and add metrics in work experience",
+  "Add ATS keywords for this job",
+  "Write an impactful 3-sentence summary",
+  "Tighten bullet points for 1-page fit",
 ];
 
 const GUIDE_SUGGESTIONS = [
   "How do I upload my resume?",
-  "Where can I see job matches?",
-  "How does ranking work?",
-  "Show me the review queue",
+  "How does ATS match work?",
+  "How do I tailor for a specific job?",
+  "How do I export to ATS-friendly PDF?",
 ];
 
-function uid() {
+function uid(): string {
   return Math.random().toString(36).slice(2, 10);
 }
 
 export function ApplyAgent() {
   const {
-    studioSession,
     isStudioActive,
+    jobContext,
+    getStudioSession,
     messages,
     setMessages,
     isChatOpen,
@@ -58,12 +61,12 @@ export function ApplyAgent() {
   // Initialize greeting if empty
   useEffect(() => {
     if (messages.length === 0) {
-      if (isStudioActive && studioSession?.jobRow) {
+      if (isStudioActive && jobContext) {
         setMessages([
           {
             id: uid(),
             role: "agent",
-            text: `Hi! I'm your AI Resume Copilot. I've loaded target job **${studioSession.jobRow.title}** at **${studioSession.jobRow.company}**. Tell me how you'd like to tailor your resume, or ask me any question!`,
+            text: `Hi! I'm your AI Resume Copilot. I've loaded target job **${jobContext.title}** at **${jobContext.company}**. Tell me how you'd like to tailor your resume, or ask me any question!`,
           },
         ]);
       } else if (isStudioActive) {
@@ -76,7 +79,7 @@ export function ApplyAgent() {
         ]);
       }
     }
-  }, [isStudioActive, messages.length, setMessages, studioSession?.jobRow]);
+  }, [isStudioActive, jobContext, messages.length, setMessages]);
 
   useEffect(() => {
     if (isChatOpen) {
@@ -91,6 +94,7 @@ export function ApplyAgent() {
   // Handle conversational undo / revert
   const handleUndoOrRevert = useCallback(
     (command: string) => {
+      const studioSession = getStudioSession();
       if (!isStudioActive || !studioSession) {
         toast.info("Undo & Revert are available inside Resume Studio.");
         return;
@@ -125,12 +129,13 @@ export function ApplyAgent() {
         toast.info("No previous checkpoints found");
       }
     },
-    [isStudioActive, studioSession, setMessages],
+    [isStudioActive, getStudioSession, setMessages],
   );
 
   // Accept a proposed AI resume change
   const acceptChange = useCallback(
     (msg: AgentChatMessage) => {
+      const studioSession = getStudioSession();
       if (!msg.pendingResume || !studioSession) return;
       const currentBeforeChange = studioSession.content;
 
@@ -149,7 +154,7 @@ export function ApplyAgent() {
       void studioSession.saveResume(msg.pendingResume);
       toast.success("Changes accepted (Checkpoint saved)");
     },
-    [studioSession, setMessages],
+    [getStudioSession, setMessages],
   );
 
   // Reject a proposed AI resume change
@@ -166,6 +171,7 @@ export function ApplyAgent() {
   // Revert an already accepted change
   const revertMessageChange = useCallback(
     (msg: AgentChatMessage) => {
+      const studioSession = getStudioSession();
       if (!msg.previousResume || !studioSession) return;
       const prev = normalizeResume(msg.previousResume);
       studioSession.setContent(prev);
@@ -184,7 +190,7 @@ export function ApplyAgent() {
       ]);
       toast.success("Change reverted successfully");
     },
-    [studioSession, setMessages],
+    [getStudioSession, setMessages],
   );
 
   // Send message
@@ -204,6 +210,7 @@ export function ApplyAgent() {
     setIsLoading(true);
 
     try {
+      const studioSession = getStudioSession();
       if (isStudioActive && studioSession) {
         // Run tailoring via agent functions
         const result = await tailorResume({
@@ -306,6 +313,8 @@ export function ApplyAgent() {
     }
   };
 
+  const currentStudioSession = getStudioSession();
+
   if (!isChatOpen) {
     return (
       <button
@@ -353,12 +362,12 @@ export function ApplyAgent() {
           </div>
         </div>
         <div className="flex items-center gap-1">
-          {isStudioActive && studioSession && (
+          {isStudioActive && currentStudioSession && (
             <Button
               size="icon"
               variant="ghost"
               className="h-8 w-8 rounded-lg text-muted-foreground hover:text-foreground"
-              onClick={() => studioSession.openCheckpointsModal()}
+              onClick={() => currentStudioSession.openCheckpointsModal()}
               title="Checkpoints & History"
             >
               <History className="size-4" />
@@ -375,11 +384,11 @@ export function ApplyAgent() {
       </div>
 
       {/* Context Banner */}
-      {isStudioActive && studioSession?.jobRow && (
+      {isStudioActive && jobContext && (
         <div className="flex items-center gap-2 border-b border-border/80 bg-primary/5 px-4 py-2 text-xs">
           <Briefcase className="size-3.5 text-primary shrink-0" />
-          <span className="font-semibold text-primary truncate">{studioSession.jobRow.title}</span>
-          <span className="text-muted-foreground truncate">· {studioSession.jobRow.company}</span>
+          <span className="font-semibold text-primary truncate">{jobContext.title}</span>
+          <span className="text-muted-foreground truncate">· {jobContext.company}</span>
         </div>
       )}
 
@@ -542,9 +551,9 @@ export function ApplyAgent() {
         </div>
         <div className="mt-2 flex items-center justify-between text-[11px] text-muted-foreground">
           <span>Enter to send{isStudioActive ? ' · Type "undo" or "revert"' : ""}</span>
-          {isStudioActive && studioSession && studioSession.versions.length > 0 && (
+          {isStudioActive && currentStudioSession && currentStudioSession.versions.length > 0 && (
             <button
-              onClick={() => studioSession.handleRevertLastChange()}
+              onClick={() => currentStudioSession.handleRevertLastChange()}
               className="flex items-center gap-1 text-primary hover:underline"
             >
               <RotateCcw className="size-2.5" /> Revert last

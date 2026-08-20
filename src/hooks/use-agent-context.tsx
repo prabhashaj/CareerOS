@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useCallback, useMemo } from "react";
+import React, { createContext, useContext, useState, useCallback, useMemo, useRef } from "react";
 import type { ResumeContent, TemplateId } from "@/lib/resume";
 import type { CheckpointItem } from "@/components/studio/CheckpointsModal";
 
@@ -41,9 +41,11 @@ export type StudioSession = {
 };
 
 type AgentContextType = {
-  studioSession: StudioSession | null;
-  registerStudioSession: (session: StudioSession) => () => void;
   isStudioActive: boolean;
+  jobContext: StudioJobContext | null;
+  getStudioSession: () => StudioSession | null;
+  registerStudioSession: (session: StudioSession) => () => void;
+  updateStudioSession: (session: StudioSession) => void;
   messages: AgentChatMessage[];
   setMessages: React.Dispatch<React.SetStateAction<AgentChatMessage[]>>;
   isChatOpen: boolean;
@@ -53,28 +55,57 @@ type AgentContextType = {
 const AgentContext = createContext<AgentContextType | null>(null);
 
 export function AgentContextProvider({ children }: { children: React.ReactNode }) {
-  const [studioSession, setStudioSession] = useState<StudioSession | null>(null);
+  const sessionRef = useRef<StudioSession | null>(null);
+  const [isStudioActive, setIsStudioActive] = useState(false);
+  const [jobContext, setJobContext] = useState<StudioJobContext | null>(null);
   const [messages, setMessages] = useState<AgentChatMessage[]>([]);
   const [isChatOpen, setIsChatOpen] = useState(false);
 
+  const getStudioSession = useCallback(() => sessionRef.current, []);
+
   const registerStudioSession = useCallback((session: StudioSession) => {
-    setStudioSession(session);
+    sessionRef.current = session;
+    setIsStudioActive(true);
+    if (session.jobRow) {
+      setJobContext(session.jobRow);
+    }
     return () => {
-      setStudioSession((current) => (current === session ? null : current));
+      sessionRef.current = null;
+      setIsStudioActive(false);
+      setJobContext(null);
     };
+  }, []);
+
+  const updateStudioSession = useCallback((session: StudioSession) => {
+    sessionRef.current = session;
+    if (session.jobRow) {
+      setJobContext((prev) =>
+        prev?.id === session.jobRow?.id && prev?.title === session.jobRow?.title ? prev : (session.jobRow ?? null),
+      );
+    }
   }, []);
 
   const value = useMemo(
     () => ({
-      studioSession,
+      isStudioActive,
+      jobContext,
+      getStudioSession,
       registerStudioSession,
-      isStudioActive: studioSession !== null,
+      updateStudioSession,
       messages,
       setMessages,
       isChatOpen,
       setIsChatOpen,
     }),
-    [studioSession, registerStudioSession, messages, isChatOpen],
+    [
+      isStudioActive,
+      jobContext,
+      getStudioSession,
+      registerStudioSession,
+      updateStudioSession,
+      messages,
+      isChatOpen,
+    ],
   );
 
   return <AgentContext.Provider value={value}>{children}</AgentContext.Provider>;
