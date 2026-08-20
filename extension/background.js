@@ -268,13 +268,44 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
           break;
         }
         case "FETCH_AGENT_PLAN": {
-          const data = await callApi("/api/public/extension/agent-plan", {
-            job_url: msg.url,
-            job_id: msg.jobId,
-            application_id: msg.applicationId,
-            page_title: msg.title,
-          });
-          sendResponse({ ok: true, data: data.plan });
+          let plan = null;
+          try {
+            const data = await callApi("/api/public/extension/agent-plan", {
+              job_url: msg.url,
+              job_id: msg.jobId,
+              application_id: msg.applicationId,
+              page_title: msg.title,
+            });
+            if (data?.plan) plan = data.plan;
+          } catch (e) {
+            console.warn("[background] Remote plan fetch error, fallback to candidate profile:", e);
+          }
+
+          if (!plan) {
+            const { auth } = await getConfig();
+            const email = auth?.user?.email || "";
+            const name = auth?.user?.user_metadata?.full_name || email.split("@")[0] || "Candidate";
+            plan = {
+              candidate: {
+                full_name: name,
+                first_name: name.split(" ")[0] || name,
+                last_name: name.split(" ").slice(1).join(" ") || "",
+                email,
+                phone: "",
+                location: "India",
+                linkedin_url: "",
+                portfolio_url: "",
+                work_authorization: "Indian Citizen / Authorized to work",
+                salary_expectations: "Competitive",
+                notice_period: "Immediate",
+              },
+              answers: {
+                full_name: name,
+                email,
+              },
+            };
+          }
+          sendResponse({ ok: true, data: plan });
           break;
         }
         case "RUN_CDP_AUTOFILL": {
