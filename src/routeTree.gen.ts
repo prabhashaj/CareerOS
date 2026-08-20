@@ -19,7 +19,6 @@ import { Route as AuthenticatedStudioRouteImport } from './routes/_authenticated
 import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticated.settings'
 import { Route as AuthenticatedReviewRouteImport } from './routes/_authenticated.review'
 import { Route as AuthenticatedResumesRouteImport } from './routes/_authenticated.resumes'
-import { Route as AuthenticatedExtensionRouteImport } from './routes/_authenticated.extension'
 import { Route as AuthenticatedEvaluationRouteImport } from './routes/_authenticated.evaluation'
 import { Route as AuthenticatedDocumentsRouteImport } from './routes/_authenticated.documents'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated.dashboard'
@@ -78,11 +77,6 @@ const AuthenticatedReviewRoute = AuthenticatedReviewRouteImport.update({
 const AuthenticatedResumesRoute = AuthenticatedResumesRouteImport.update({
   id: '/resumes',
   path: '/resumes',
-  getParentRoute: () => AuthenticatedRoute,
-} as any)
-const AuthenticatedExtensionRoute = AuthenticatedExtensionRouteImport.update({
-  id: '/extension',
-  path: '/extension',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
 const AuthenticatedEvaluationRoute = AuthenticatedEvaluationRouteImport.update({
@@ -150,7 +144,6 @@ export interface FileRoutesByFullPath {
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/documents': typeof AuthenticatedDocumentsRoute
   '/evaluation': typeof AuthenticatedEvaluationRoute
-  '/extension': typeof AuthenticatedExtensionRoute
   '/resumes': typeof AuthenticatedResumesRoute
   '/review': typeof AuthenticatedReviewRoute
   '/settings': typeof AuthenticatedSettingsRoute
@@ -172,7 +165,6 @@ export interface FileRoutesByTo {
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/documents': typeof AuthenticatedDocumentsRoute
   '/evaluation': typeof AuthenticatedEvaluationRoute
-  '/extension': typeof AuthenticatedExtensionRoute
   '/resumes': typeof AuthenticatedResumesRoute
   '/review': typeof AuthenticatedReviewRoute
   '/settings': typeof AuthenticatedSettingsRoute
@@ -196,7 +188,6 @@ export interface FileRoutesById {
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
   '/_authenticated/documents': typeof AuthenticatedDocumentsRoute
   '/_authenticated/evaluation': typeof AuthenticatedEvaluationRoute
-  '/_authenticated/extension': typeof AuthenticatedExtensionRoute
   '/_authenticated/resumes': typeof AuthenticatedResumesRoute
   '/_authenticated/review': typeof AuthenticatedReviewRoute
   '/_authenticated/settings': typeof AuthenticatedSettingsRoute
@@ -220,7 +211,6 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/documents'
     | '/evaluation'
-    | '/extension'
     | '/resumes'
     | '/review'
     | '/settings'
@@ -242,7 +232,6 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/documents'
     | '/evaluation'
-    | '/extension'
     | '/resumes'
     | '/review'
     | '/settings'
@@ -265,7 +254,6 @@ export interface FileRouteTypes {
     | '/_authenticated/dashboard'
     | '/_authenticated/documents'
     | '/_authenticated/evaluation'
-    | '/_authenticated/extension'
     | '/_authenticated/resumes'
     | '/_authenticated/review'
     | '/_authenticated/settings'
@@ -360,13 +348,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedResumesRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
-    '/_authenticated/extension': {
-      id: '/_authenticated/extension'
-      path: '/extension'
-      fullPath: '/extension'
-      preLoaderRoute: typeof AuthenticatedExtensionRouteImport
-      parentRoute: typeof AuthenticatedRoute
-    }
     '/_authenticated/evaluation': {
       id: '/_authenticated/evaluation'
       path: '/evaluation'
@@ -447,7 +428,6 @@ interface AuthenticatedRouteChildren {
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
   AuthenticatedDocumentsRoute: typeof AuthenticatedDocumentsRoute
   AuthenticatedEvaluationRoute: typeof AuthenticatedEvaluationRoute
-  AuthenticatedExtensionRoute: typeof AuthenticatedExtensionRoute
   AuthenticatedResumesRoute: typeof AuthenticatedResumesRoute
   AuthenticatedReviewRoute: typeof AuthenticatedReviewRoute
   AuthenticatedSettingsRoute: typeof AuthenticatedSettingsRoute
@@ -464,7 +444,6 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
   AuthenticatedDocumentsRoute: AuthenticatedDocumentsRoute,
   AuthenticatedEvaluationRoute: AuthenticatedEvaluationRoute,
-  AuthenticatedExtensionRoute: AuthenticatedExtensionRoute,
   AuthenticatedResumesRoute: AuthenticatedResumesRoute,
   AuthenticatedReviewRoute: AuthenticatedReviewRoute,
   AuthenticatedSettingsRoute: AuthenticatedSettingsRoute,

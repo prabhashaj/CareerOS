@@ -9,7 +9,6 @@ import {
   Inbox,
   ChevronDown,
   ExternalLink,
-  Puzzle,
   MapPin,
   Briefcase,
   Send,
@@ -53,13 +52,13 @@ function ReviewPage() {
   const [busy, setBusy] = useState<string | null>(null);
   const [filled] = useState<Record<string, FillResult>>({});
 
-  const openWithExtension = (sourceUrl?: string) => {
+  const openApplication = (sourceUrl?: string) => {
     if (!sourceUrl) {
       toast.error("No application URL on this job.");
       return;
     }
     window.open(sourceUrl, "_blank", "noopener,noreferrer");
-    toast.success("Opened application — click the CareerOS extension icon to auto-fill.");
+    toast.success("Opened application page.");
   };
 
   const decideAndAutofill = async (
@@ -76,8 +75,8 @@ function ReviewPage() {
         toast.success("Rejected");
         return;
       }
-      toast.success("Approved — opening the application page for the extension to fill.");
-      openWithExtension(sourceUrl);
+      toast.success("Approved — opening the application page.");
+      openApplication(sourceUrl);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed");
     } finally {
@@ -214,10 +213,10 @@ function ReviewPage() {
                       <Button
                         size="sm"
                         disabled={isBusy}
-                        onClick={() => openWithExtension(sourceUrl)}
+                        onClick={() => openApplication(sourceUrl)}
                       >
-                        <Puzzle className="mr-1 h-4 w-4" />
-                        Open & auto-fill
+                        <ExternalLink className="mr-1 h-4 w-4" />
+                        Open Application
                       </Button>
                     )}
                     {applyHref && (
@@ -228,12 +227,6 @@ function ReviewPage() {
                         </a>
                       </Button>
                     )}
-                    <Button size="sm" variant="ghost" asChild>
-                      <Link to="/extension">
-                        <Puzzle className="mr-1 h-4 w-4" />
-                        Get extension
-                      </Link>
-                    </Button>
 
                   </div>
                 </div>

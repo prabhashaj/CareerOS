@@ -10,7 +10,6 @@ import {
   Settings,
   Upload,
   LogOut,
-  Puzzle,
   Compass,
   Sparkles,
 } from "lucide-react";
@@ -41,7 +40,7 @@ const discovery = [
 
 const studio = [
   { title: "Resume Studio", url: "/studio", icon: Sparkles },
-  { title: "My Resumes", url: "/resumes", icon: FileText },
+  { title: "Documents & Resumes", url: "/resumes", icon: FileText },
 ];
 
 const pipeline = [
@@ -51,9 +50,7 @@ const pipeline = [
 ];
 
 const library = [
-  { title: "Documents", url: "/documents", icon: FileText },
   { title: "Upload", url: "/upload", icon: Upload },
-  { title: "Browser extension", url: "/extension", icon: Puzzle },
   { title: "Settings", url: "/settings", icon: Settings },
 ];
 

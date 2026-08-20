@@ -4,6 +4,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/app-sidebar";
 import { ApplyAgent } from "@/components/apply-agent";
+import { AgentContextProvider } from "@/hooks/use-agent-context";
 
 export const Route = createFileRoute("/_authenticated")({
   component: AuthenticatedLayout,
@@ -26,16 +27,18 @@ function AuthenticatedLayout() {
   }
 
   return (
-    <SidebarProvider>
-      <div className="flex h-screen w-full overflow-hidden bg-background">
-        <AppSidebar />
-        <SidebarInset className="flex flex-1 flex-col h-full overflow-hidden">
-          <main className="flex-1 overflow-auto h-full">
-            <Outlet />
-          </main>
-        </SidebarInset>
-      </div>
-      <ApplyAgent />
-    </SidebarProvider>
+    <AgentContextProvider>
+      <SidebarProvider>
+        <div className="flex h-screen w-full overflow-hidden bg-background">
+          <AppSidebar />
+          <SidebarInset className="flex flex-1 flex-col h-full overflow-hidden">
+            <main className="flex-1 overflow-auto h-full">
+              <Outlet />
+            </main>
+          </SidebarInset>
+        </div>
+        <ApplyAgent />
+      </SidebarProvider>
+    </AgentContextProvider>
   );
 }

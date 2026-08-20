@@ -1,36 +1,32 @@
 import { createFileRoute, useSearch } from "@tanstack/react-router";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Code2,
   Download,
   Eye,
   FileText,
   History,
-  Layers,
   LayoutTemplate,
   Loader2,
   Maximize2,
-  MessageCircle,
   Minimize2,
   PanelLeftClose,
   PanelLeftOpen,
   RotateCcw,
-  Send,
   Sliders,
   Sparkles,
   SquarePen,
   Upload,
-  X,
   ZoomIn,
   ZoomOut,
   Check,
 } from "lucide-react";
 import { toast } from "sonner";
-import { tailorResume } from "@/lib/agent.functions";
 import { supabase } from "@/integrations/supabase/client";
 import type { Json } from "@/integrations/supabase/types";
 import { useAuth } from "@/hooks/use-auth";
+import { useAgentContext } from "@/hooks/use-agent-context";
 import {
   TEMPLATES,
   type TemplateId,
@@ -48,7 +44,6 @@ import { UploadResumeModal } from "@/components/resume/UploadResumeModal";
 import { CheckpointsModal, type CheckpointItem } from "@/components/studio/CheckpointsModal";
 import { exportDocx, exportPdf } from "@/lib/export";
 import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import {
   Select,
@@ -74,26 +69,12 @@ export const Route = createFileRoute("/_authenticated/studio")({
   }),
 });
 
-type ChatMessage = {
-  id: string;
-  role: "user" | "agent";
-  text: string;
-  changelog?: string[] | undefined;
-  questions?: string[] | undefined;
-  pendingResume?: ResumeContent | undefined;
-  previousResume?: ResumeContent | undefined;
-  isReverted?: boolean | undefined;
-};
-
 type LeftTab = "form" | "json";
-
-function uid() {
-  return Math.random().toString(36).slice(2, 10);
-}
 
 function StudioPage() {
   const { user } = useAuth();
   const qc = useQueryClient();
+  const { registerStudioSession, setMessages } = useAgentContext();
   const { resumeId, jobId } = useSearch({ from: "/_authenticated/studio" });
 
   const [content, setContent] = useState<ResumeContent>(starterResume());
@@ -102,9 +83,6 @@ function StudioPage() {
   const [leftTab, setLeftTab] = useState<LeftTab>("form");
   const [jsonRaw, setJsonRaw] = useState("");
   const [jsonError, setJsonError] = useState<string | null>(null);
-  const [chatOpen, setChatOpen] = useState(true);
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [input, setInput] = useState("");
   const [currentResumeId, setCurrentResumeId] = useState<string | null>(resumeId ?? null);
   const [isSaving, setIsSaving] = useState(false);
   const [showVersions, setShowVersions] = useState(false);
@@ -114,7 +92,6 @@ function StudioPage() {
   const [isWideEditor, setIsWideEditor] = useState(false);
   const [showPageBreaks, setShowPageBreaks] = useState(true);
   const [isExportingPdf, setIsExportingPdf] = useState(false);
-  const chatEndRef = useRef<HTMLDivElement>(null);
 
   const activePreset = SPACING_PRESETS[density] || SPACING_PRESETS.normal;
   const currentSpacing: {
@@ -222,37 +199,12 @@ function StudioPage() {
     }
   }, [resumeRow]);
 
-  useEffect(() => {
-    if (jobRow && messages.length === 0) {
-      setMessages([
-        {
-          id: uid(),
-          role: "agent",
-          text: `Job loaded: **${jobRow.title}** at **${jobRow.company}**. Tell me what to tailor — e.g. "Rewrite the summary and highlight my leadership experience" — and I'll adapt your resume to this posting. You can ask me to revert any changes at any time!`,
-        },
-      ]);
-    } else if (messages.length === 0) {
-      setMessages([
-        {
-          id: uid(),
-          role: "agent",
-          text: "Hi! I'm your AI resume agent. Tell me what to improve — e.g. \"Quantify my experience\" or \"Add more TypeScript keywords\" — and I'll edit your resume. You can accept, reject, or revert any change at any time.",
-        },
-      ]);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [jobRow]);
-
   // Sync JSON editor when switching tab
   useEffect(() => {
     if (leftTab === "json") {
       setJsonRaw(JSON.stringify(content, null, 2));
     }
   }, [leftTab]);
-
-  useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
 
   const saveResume = useCallback(
     async (c: ResumeContent, tpl = template) => {
@@ -354,7 +306,7 @@ function StudioPage() {
       setMessages((prev) => [
         ...prev,
         {
-          id: uid(),
+          id: Math.random().toString(36).slice(2, 10),
           role: "agent",
           text: `🔄 **Checkpoint Restored**: Successfully reverted resume back to **"${checkpoint.label}"** (Version v${checkpoint.version}).`,
         },
@@ -362,7 +314,7 @@ function StudioPage() {
 
       toast.success(`Reverted to v${checkpoint.version}: ${checkpoint.label}`);
     },
-    [content, createCheckpoint, saveResume, template],
+    [content, createCheckpoint, saveResume, setMessages, template],
   );
 
   // Quick Revert to latest previous checkpoint
@@ -385,131 +337,54 @@ function StudioPage() {
     }
   }, [handleRevertToCheckpoint, versions]);
 
-  // Revert a specific message's applied change
-  const revertMessageChange = (msg: ChatMessage) => {
-    if (!msg.previousResume) return;
-    const prev = normalizeResume(msg.previousResume);
-    setContent(prev);
-    void saveResume(prev);
+  const formattedVersions: CheckpointItem[] = useMemo(
+    () =>
+      versions.map((v) => ({
+        id: v.id,
+        version: v.version,
+        label: v.label || `Version ${v.version}`,
+        created_at: v.created_at,
+        content: normalizeResume(v.content),
+        template_id: v.template_id,
+      })),
+    [versions],
+  );
 
-    setMessages((msgs) =>
-      msgs.map((m) => (m.id === msg.id ? { ...m, isReverted: true } : m)),
-    );
-    setMessages((msgs) => [
-      ...msgs,
-      {
-        id: uid(),
-        role: "agent",
-        text: `↩ **Change Reverted**: Restored resume to state prior to change: "${msg.changelog?.[0] || msg.text.slice(0, 35)}"`,
-      },
-    ]);
-    toast.success("Change reverted successfully");
-  };
-
-  const agentMut = useMutation({
-    mutationFn: (instruction: string) =>
-      tailorResume({
-        data: {
-          resume: content,
-          instruction,
-          jobTitle: jobRow?.title,
-          company: jobRow?.company,
-          jobDescription: jobRow?.description || undefined,
-        },
-      }),
-    onMutate: (instruction) => {
-      const userMsg: ChatMessage = { id: uid(), role: "user", text: instruction };
-      setMessages((prev) => [...prev, userMsg]);
-      setInput("");
-    },
-    onSuccess: (result: { resumeJson: string; reply: string; changelog: string[]; questions: string[] }) => {
-      const pending = normalizeResume(JSON.parse(result.resumeJson));
-      const agentMsg: ChatMessage = {
-        id: uid(),
-        role: "agent",
-        text: result.reply,
-        changelog: result.changelog,
-        questions: result.questions,
-        pendingResume: pending,
-      };
-      setMessages((prev) => [...prev, agentMsg]);
-    },
-    onError: () => toast.error("Agent call failed"),
-  });
-
-  const handleSend = () => {
-    const trimmed = input.trim();
-    if (!trimmed || agentMut.isPending) return;
-
-    // Check if user is asking to revert or undo via conversational prompt
-    if (/^(revert|undo|go back|rollback|restore checkpoint|revert back)/i.test(trimmed)) {
-      setInput("");
-      const userMsg: ChatMessage = { id: uid(), role: "user", text: trimmed };
-      setMessages((prev) => [...prev, userMsg]);
-
-      // Check if user specified a version number, e.g. "revert to v2" or "revert to 2"
-      const match = trimmed.match(/\b(?:v|version|checkpoint)?\s*(\d+)\b/i);
-      if (match && match[1]) {
-        const targetVer = parseInt(match[1], 10);
-        const found = versions.find((v) => v.version === targetVer);
-        if (found) {
-          handleRevertToCheckpoint({
-            id: found.id,
-            version: found.version,
-            label: found.label || `Version ${found.version}`,
-            created_at: found.created_at,
-            content: normalizeResume(found.content),
-            template_id: found.template_id,
-          });
-          return;
-        }
-      }
-
-      if (versions.length > 0) {
-        handleRevertLastChange();
-      } else {
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: uid(),
-            role: "agent",
-            text: "No previous saved checkpoints found. You can create a checkpoint snapshot anytime using the **Checkpoints** button in the toolbar!",
-          },
-        ]);
-        toast.info("No previous checkpoints found");
-      }
-      return;
-    }
-
-    agentMut.mutate(trimmed);
-  };
-
-  const acceptChange = (msg: ChatMessage) => {
-    if (!msg.pendingResume) return;
-    const currentBeforeChange = content;
-
-    // Auto-save checkpoint of current state before applying revision
-    const labelDesc = msg.changelog?.[0] || msg.text.slice(0, 32);
-    void createCheckpoint(`Pre-AI: ${labelDesc}`, currentBeforeChange, "agent");
-
-    setContent(msg.pendingResume);
-    setMessages((prev) =>
-      prev.map((m) =>
-        m.id === msg.id
-          ? { ...m, pendingResume: undefined, previousResume: currentBeforeChange }
-          : m,
-      ),
-    );
-    void saveResume(msg.pendingResume);
-    toast.success("Changes accepted (Checkpoint saved)");
-  };
-
-  const rejectChange = (msg: ChatMessage) => {
-    setMessages((prev) =>
-      prev.map((m) => (m.id === msg.id ? { ...m, pendingResume: undefined } : m)),
-    );
-    toast.info("Changes rejected");
-  };
+  // Register this studio session with the global AgentContext
+  useEffect(() => {
+    return registerStudioSession({
+      content,
+      template,
+      setContent,
+      setTemplate,
+      saveResume,
+      createCheckpoint,
+      handleRevertToCheckpoint,
+      handleRevertLastChange,
+      openCheckpointsModal: () => setShowVersions(true),
+      jobRow: jobRow
+        ? {
+            id: jobRow.id,
+            title: jobRow.title,
+            company: jobRow.company,
+            description: jobRow.description,
+          }
+        : null,
+      versions: formattedVersions,
+      currentResumeId,
+    });
+  }, [
+    content,
+    template,
+    saveResume,
+    createCheckpoint,
+    handleRevertToCheckpoint,
+    handleRevertLastChange,
+    jobRow,
+    formattedVersions,
+    currentResumeId,
+    registerStudioSession,
+  ]);
 
   const applyJsonEdit = () => {
     try {
@@ -1055,215 +930,7 @@ function StudioPage() {
         </div>
       </div>
 
-      {/* Floating Chat Icon */}
-      <button
-        onClick={() => setChatOpen(true)}
-        className="fixed bottom-6 right-6 z-50 flex h-14 w-14 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-2xl hover:bg-primary/90 transition-all hover:scale-110"
-        title="Open AI Chat"
-      >
-        <MessageCircle className="size-7" />
-      </button>
 
-      {/* Chat Modal */}
-      {chatOpen && (
-        <div
-          className="fixed inset-0 z-50 flex items-end justify-end bg-black/20 backdrop-blur-xs transition-opacity"
-          onClick={() => setChatOpen(false)}
-        >
-          <div
-            className="h-[600px] w-[390px] flex flex-col border-l border-t border-border bg-card shadow-2xl m-6 rounded-2xl overflow-hidden ring-1 ring-border/80"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* Modal Header */}
-            <div className="flex h-14 items-center justify-between border-b border-border px-5 bg-card">
-              <div className="flex items-center gap-2.5">
-                <div className="grid size-8 place-items-center rounded-xl bg-primary/10 text-primary">
-                  <Sparkles className="size-4" />
-                </div>
-                <div>
-                  <span className="text-sm font-bold text-foreground">AI Resume Agent</span>
-                  <p className="text-[10px] text-muted-foreground">Tailor & Revert on Demand</p>
-                </div>
-              </div>
-              <div className="flex items-center gap-1">
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  className="h-8 w-8 rounded-lg text-muted-foreground hover:text-foreground"
-                  onClick={() => setShowVersions(true)}
-                  title="Checkpoints History"
-                >
-                  <History className="size-4" />
-                </Button>
-                <button
-                  onClick={() => setChatOpen(false)}
-                  className="rounded-lg p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
-                  aria-label="Close chat"
-                >
-                  <X className="size-4.5" />
-                </button>
-              </div>
-            </div>
-
-            {/* Job context banner */}
-            {jobRow && (
-              <div className="border-b border-border bg-primary/5 px-5 py-2.5 text-xs">
-                <span className="font-semibold text-primary">{jobRow.title}</span>
-                <span className="text-muted-foreground"> · {jobRow.company}</span>
-              </div>
-            )}
-
-            {/* Messages */}
-            <div className="min-h-0 flex-1 overflow-y-auto space-y-3 p-5">
-              {messages.length === 0 && (
-                <div className="flex flex-col items-center justify-center py-12 text-center text-muted-foreground">
-                  <div className="grid size-12 place-items-center rounded-full bg-primary/10 text-primary mb-3">
-                    <Sparkles className="size-6" />
-                  </div>
-                  <p className="text-sm font-semibold text-foreground">AI Resume Assistant</p>
-                  <p className="mt-2 text-xs text-muted-foreground max-w-[240px]">
-                    Ask me to tailor, tighten, balance pages, or rewrite bullets. You can revert changes anytime.
-                  </p>
-                </div>
-              )}
-
-              {messages.map((msg) => (
-                <div key={msg.id} className={cn("flex", msg.role === "user" ? "justify-end" : "justify-start")}>
-                  <div
-                    className={cn(
-                      "max-w-[90%] rounded-2xl px-4 py-3 text-xs leading-relaxed shadow-xs",
-                      msg.role === "user"
-                        ? "bg-primary text-primary-foreground rounded-tr-xs"
-                        : "bg-secondary text-foreground rounded-tl-xs border border-border/60",
-                    )}
-                  >
-                    <p className="whitespace-pre-wrap">{msg.text}</p>
-
-                    {/* Changelog */}
-                    {msg.changelog && msg.changelog.length > 0 && (
-                      <ul className="mt-3 space-y-2 border-t border-border/40 pt-2 text-xs">
-                        {msg.changelog.map((c, i) => (
-                          <li key={i} className="flex items-start gap-2 text-muted-foreground">
-                            <Layers className="mt-0.5 size-3.5 shrink-0 text-primary" />
-                            <span>{c}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-
-                    {/* Accept / reject */}
-                    {msg.pendingResume && (
-                      <div className="mt-3 flex gap-2 border-t border-border/40 pt-2.5">
-                        <button
-                          id={`accept-${msg.id}`}
-                          onClick={() => acceptChange(msg)}
-                          className="flex items-center gap-1.5 rounded-xl bg-emerald-600 px-3.5 py-1.5 text-xs font-semibold text-white transition-all hover:bg-emerald-700 shadow-sm"
-                        >
-                          <Check className="size-3.5" /> Accept
-                        </button>
-                        <button
-                          id={`reject-${msg.id}`}
-                          onClick={() => rejectChange(msg)}
-                          className="flex items-center gap-1.5 rounded-xl bg-muted px-3.5 py-1.5 text-xs font-medium text-foreground transition-all hover:bg-accent border border-border"
-                        >
-                          <X className="size-3.5" /> Reject
-                        </button>
-                      </div>
-                    )}
-
-                    {/* Revert button on accepted change */}
-                    {msg.previousResume && !msg.isReverted && (
-                      <div className="mt-2.5 border-t border-border/40 pt-2">
-                        <button
-                          id={`revert-${msg.id}`}
-                          onClick={() => revertMessageChange(msg)}
-                          className="flex items-center gap-1.5 rounded-lg border border-primary/25 bg-primary/5 px-2.5 py-1 text-[11px] font-medium text-primary hover:bg-primary/15 transition-all"
-                        >
-                          <RotateCcw className="size-3" /> Revert this change
-                        </button>
-                      </div>
-                    )}
-
-                    {msg.isReverted && (
-                      <div className="mt-2 border-t border-border/40 pt-1.5">
-                        <Badge variant="outline" className="text-[10px] text-muted-foreground border-border/80">
-                          Reverted
-                        </Badge>
-                      </div>
-                    )}
-
-                    {/* Follow-up questions */}
-                    {msg.questions && msg.questions.length > 0 && !msg.pendingResume && (
-                      <div className="mt-3 space-y-2 border-t border-border/40 pt-2.5">
-                        {msg.questions.map((q, i) => (
-                          <button
-                            key={i}
-                            onClick={() => setInput(q)}
-                            className="block w-full rounded-xl bg-primary/10 px-3 py-2 text-left text-xs font-medium text-primary hover:bg-primary/20 transition-all"
-                          >
-                            {q}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              ))}
-              {agentMut.isPending && (
-                <div className="flex justify-start">
-                  <div className="rounded-2xl rounded-tl-xs bg-secondary px-4 py-3 border border-border/60">
-                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                      <Loader2 className="size-4 animate-spin text-primary" />
-                      <span>Agent is optimizing resume…</span>
-                    </div>
-                  </div>
-                </div>
-              )}
-              <div ref={chatEndRef} />
-            </div>
-
-            {/* Input */}
-            <div className="border-t border-border p-4 bg-card">
-              <div className="flex gap-2">
-                <Textarea
-                  id="chat-input"
-                  rows={2}
-                  placeholder="Ask agent to tailor or 'revert last change'…"
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                  className="resize-none text-xs leading-relaxed rounded-xl border-border focus:border-primary focus:ring-2 focus:ring-primary/20"
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && !e.shiftKey) {
-                      e.preventDefault();
-                      handleSend();
-                    }
-                  }}
-                />
-                <Button
-                  id="chat-send-btn"
-                  size="icon"
-                  className="h-full min-h-[50px] shrink-0 rounded-xl shadow-md hover:shadow-lg transition-all"
-                  onClick={handleSend}
-                  disabled={agentMut.isPending || !input.trim()}
-                >
-                  <Send className="size-4" />
-                </Button>
-              </div>
-              <div className="mt-2 flex items-center justify-between text-[11px] text-muted-foreground">
-                <span>Enter to send · Type &quot;undo&quot; or &quot;revert&quot;</span>
-                {versions.length > 0 && (
-                  <button
-                    onClick={handleRevertLastChange}
-                    className="flex items-center gap-1 text-primary hover:underline"
-                  >
-                    <RotateCcw className="size-2.5" /> Revert last
-                  </button>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Checkpoints & History Modal */}
       <CheckpointsModal
