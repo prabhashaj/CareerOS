@@ -37,12 +37,40 @@ npm install
 
 ### Step 2: Configure Environment Variables
 
-Create a `.env` file in the root of the project (this file is ignored by Git to protect your secrets):
+Copy the example configuration file:
+
+```bash
+cp .env.example .env
+```
+
+And configure your keys in `.env`:
 
 ```env
+# Required: Supabase
+SUPABASE_URL="https://your-project-id.supabase.co"
 SUPABASE_PROJECT_ID="your-supabase-project-id"
 SUPABASE_PUBLISHABLE_KEY="your-supabase-anon-public-key"
+VITE_SUPABASE_URL="https://your-project-id.supabase.co"
+VITE_SUPABASE_PROJECT_ID="your-supabase-project-id"
+VITE_SUPABASE_PUBLISHABLE_KEY="your-supabase-anon-public-key"
+
+# Required: Mistral AI (Tailoring, ranking, parsing)
 MISTRAL_API_KEY="your-mistral-api-key"
+
+# Optional: Deep Web Search (Tavily)
+# Job search queries 5 free public aggregators (Remotive, Arbeitnow, The Muse, Jobicy, RemoteOK)
+# by default with NO key needed. TAVILY_API_KEY enables deep web search across ATS boards (Greenhouse, Lever)
+# and regional portals (Naukri, LinkedIn, Cutshort).
+TAVILY_API_KEY=""
+
+# Optional: URL Ingestion (Firecrawl)
+# Enables deep scraping when pasting raw job URLs or LinkedIn profiles.
+FIRECRAWL_API_KEY=""
+
+# Optional: Cloud Browser Automation (Browserbase)
+# Used for assisted live browser autofill.
+BROWSERBASE_API_KEY=""
+BROWSERBASE_PROJECT_ID=""
 ```
 
 ### Step 3: Set Up Database

@@ -60,31 +60,20 @@ export const Route = createFileRoute("/_authenticated/jobs/")({
 type SortKey = "rank" | "newest" | "oldest" | "title" | "company";
 type RemoteFilter = "any" | "remote" | "onsite";
 
-const SOURCES = [
-  { name: "Naukri", domain: "naukri.com" },
-  { name: "LinkedIn India", domain: "linkedin.com" },
-  { name: "Instahyre", domain: "instahyre.com" },
-  { name: "Cutshort", domain: "cutshort.io" },
-  { name: "Foundit", domain: "foundit.in" },
-  { name: "Hirist", domain: "hirist.tech" },
-  { name: "Internshala", domain: "internshala.com" },
-];
-
 function SearchingOverlay({ query, location }: { query: string; location: string }) {
-  const target = `${query || "your target roles"}${location ? ` near ${location}` : ""}`;
+  const target = `${query || "your target roles"}${location ? ` in ${location}` : ""}`;
   const phases = useMemo(
     () => [
-      `Building search for ${target}…`,
-      ...SOURCES.map((s) => `Querying ${s.name}…`),
-      "Scoring against your profile…",
-      "Filtering duplicates & low-signal posts…",
-      "Ingesting into your jobs list…",
+      `Querying public job feeds (Remotive, Arbeitnow, The Muse, Jobicy, RemoteOK)...`,
+      `Scanning company career pages & ATS boards for "${target}"...`,
+      `Structuring, deduplicating, and scoring roles against your criteria...`,
+      `Checking pipeline status & preparing results...`,
     ],
     [target],
   );
   const [i, setI] = useState(0);
   useEffect(() => {
-    const t = setInterval(() => setI((x) => (x + 1) % phases.length), 1400);
+    const t = setInterval(() => setI((x) => (x + 1) % phases.length), 1600);
     return () => clearInterval(t);
   }, [phases.length]);
 
@@ -123,6 +112,12 @@ function JobsPage() {
   const [searching, setSearching] = useState(false);
 
   const [discoveredJobs, setDiscoveredJobs] = useState<any[] | null>(null);
+  const [searchMeta, setSearchMeta] = useState<{
+    queriedAggregators?: boolean;
+    tavilyEnabled?: boolean;
+    sources?: string[];
+    totalDiscovered?: number;
+  } | null>(null);
   const [importingJobUrl, setImportingJobUrl] = useState<string | null>(null);
   const [importingAll, setImportingAll] = useState(false);
 
@@ -132,9 +127,11 @@ function JobsPage() {
       const qVal = sessionStorage.getItem("career_os_search_q");
       const locVal = sessionStorage.getItem("career_os_search_loc");
       const jobsVal = sessionStorage.getItem("career_os_discovered_jobs");
+      const metaVal = sessionStorage.getItem("career_os_search_meta");
       if (qVal) setSearchQ(qVal);
       if (locVal) setSearchLoc(locVal);
       if (jobsVal) setDiscoveredJobs(JSON.parse(jobsVal));
+      if (metaVal) setSearchMeta(JSON.parse(metaVal));
     } catch (e) {
       console.error("Failed to load sessionStorage state", e);
     }
@@ -162,8 +159,13 @@ function JobsPage() {
       } else {
         sessionStorage.removeItem("career_os_discovered_jobs");
       }
+      if (searchMeta) {
+        sessionStorage.setItem("career_os_search_meta", JSON.stringify(searchMeta));
+      } else {
+        sessionStorage.removeItem("career_os_search_meta");
+      }
     } catch {}
-  }, [discoveredJobs]);
+  }, [discoveredJobs, searchMeta]);
 
   // Trigger search if routed with params (overwrites sessionStorage)
   useEffect(() => {
@@ -193,10 +195,11 @@ function JobsPage() {
           }
           if (res.success && res.jobs) {
             setDiscoveredJobs(res.jobs);
+            setSearchMeta(res.sourceMeta ?? null);
             if (res.jobs.length === 0) {
-              toast.info("No matching jobs found.");
+              toast.info("No matching jobs found. Try adjusting keywords or location.");
             } else {
-              toast.success(`Found ${res.jobs.length} active jobs on the web!`);
+              toast.success(`Found ${res.jobs.length} active jobs!`);
             }
           }
         } catch (e) {
@@ -328,10 +331,11 @@ function JobsPage() {
       }
       if (res.success && res.jobs) {
         setDiscoveredJobs(res.jobs);
+        setSearchMeta(res.sourceMeta ?? null);
         if (res.jobs.length === 0) {
-          toast.info("No matching jobs found. Try a different query or location.");
+          toast.info("No matching jobs found. Try adjusting keywords or location.");
         } else {
-          toast.success(`Found ${res.jobs.length} active jobs on the web!`);
+          toast.success(`Found ${res.jobs.length} active jobs!`);
         }
       }
     } catch (e) {
@@ -481,36 +485,43 @@ function JobsPage() {
             <div>
               <h2 className="font-display text-xl font-semibold flex items-center gap-2">
                 <Sparkles className="h-5 w-5 text-accent animate-pulse" />
-                Discovered Jobs on the Web ({discoveredJobs.length})
+                Discovered Jobs ({discoveredJobs.length})
               </h2>
-              <p className="text-xs text-muted-foreground">
-                Active job postings retrieved and cleaned by AI. Select which roles to import into your pipeline.
+              <p className="text-xs text-muted-foreground mt-0.5">
+                {discoveredJobs.length > 0
+                  ? "Real-time opportunities aggregated from public job feeds & web career boards."
+                  : "No opportunities matched your exact search query."}
               </p>
             </div>
             <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleImportAll}
-                disabled={importingAll || discoveredJobs.every((j) => j.alreadyInPipeline)}
-              >
-                {importingAll ? (
-                  <>
-                    <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-                    Importing...
-                  </>
-                ) : (
-                  <>
-                    <Plus className="mr-1.5 h-3.5 w-3.5" />
-                    Import All
-                  </>
-                )}
-              </Button>
+              {discoveredJobs.length > 0 && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleImportAll}
+                  disabled={importingAll || discoveredJobs.every((j) => j.alreadyInPipeline)}
+                >
+                  {importingAll ? (
+                    <>
+                      <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                      Importing...
+                    </>
+                  ) : (
+                    <>
+                      <Plus className="mr-1.5 h-3.5 w-3.5" />
+                      Import All
+                    </>
+                  )}
+                </Button>
+              )}
               <Button
                 variant="ghost"
                 size="icon"
                 className="h-8 w-8 text-muted-foreground hover:text-foreground"
-                onClick={() => setDiscoveredJobs(null)}
+                onClick={() => {
+                  setDiscoveredJobs(null);
+                  setSearchMeta(null);
+                }}
                 title="Dismiss search results"
               >
                 <X className="h-4 w-4" />
@@ -518,77 +529,110 @@ function JobsPage() {
             </div>
           </div>
 
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {discoveredJobs.map((job) => {
-              const getSourceBadge = (source: string) => {
-                const src = source.toLowerCase();
-                if (src === "linkedin") return "bg-blue-500/10 text-blue-500 border-blue-500/20";
-                if (src === "indeed") return "bg-indigo-500/10 text-indigo-500 border-indigo-500/20";
-                if (src === "naukri") return "bg-amber-500/10 text-amber-500 border-amber-500/20";
-                if (src === "instahyre" || src === "cutshort" || src === "hirist") return "bg-rose-500/10 text-rose-500 border-rose-500/20";
-                return "bg-primary/10 text-primary border-primary/20";
-              };
+          {searchMeta?.sources && searchMeta.sources.length > 0 && (
+            <div className="mb-4 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+              <span className="font-medium">Sources:</span>
+              {searchMeta.sources.map((s) => (
+                <span key={s} className="rounded-md bg-muted px-2 py-0.5 text-[11px] font-medium text-foreground">
+                  {s}
+                </span>
+              ))}
+              {!searchMeta.tavilyEnabled && (
+                <span className="ml-1 text-[11px] text-muted-foreground/80">
+                  (Free public feeds · add <code className="text-[10px] bg-muted px-1 py-0.5 rounded">TAVILY_API_KEY</code> for deep ATS/portal search)
+                </span>
+              )}
+            </div>
+          )}
 
-              return (
-                <div
-                  key={job.url}
-                  className="flex flex-col justify-between rounded-xl border border-border bg-card/60 p-4 transition-all duration-300 hover:-translate-y-1 hover:border-primary/20 hover:shadow-lift"
-                >
-                  <div>
-                    <div className="mb-2 flex items-start justify-between gap-2">
-                      <Badge className={getSourceBadge(job.source)} variant="outline">
-                        {job.source}
-                      </Badge>
-                      {job.remote && (
-                        <Badge className="bg-purple-500/10 text-purple-500 border-purple-500/20" variant="outline">
-                          Remote
+          {discoveredJobs.length === 0 ? (
+            <div className="rounded-lg border border-dashed border-border/80 p-8 text-center">
+              <p className="text-sm font-medium text-foreground">No matching jobs found</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Try searching for a broader role (e.g. &ldquo;Developer&rdquo;, &ldquo;Engineer&rdquo;), clearing the location filter, or toggling remote/entry-level modes.
+              </p>
+            </div>
+          ) : (
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {discoveredJobs.map((job) => {
+                const getSourceBadge = (source: string) => {
+                  const src = source.toLowerCase();
+                  if (src === "remotive") return "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20";
+                  if (src === "arbeitnow") return "bg-teal-500/10 text-teal-600 dark:text-teal-400 border-teal-500/20";
+                  if (src === "the muse") return "bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-500/20";
+                  if (src === "jobicy") return "bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 border-cyan-500/20";
+                  if (src === "remoteok") return "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20";
+                  if (src === "greenhouse" || src === "lever" || src === "ashby" || src === "workday" || src === "smartrecruiters")
+                    return "bg-violet-500/10 text-violet-600 dark:text-violet-400 border-violet-500/20";
+                  if (src === "linkedin") return "bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20";
+                  if (src === "naukri") return "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20";
+                  if (src === "instahyre" || src === "cutshort" || src === "hirist")
+                    return "bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20";
+                  if (src === "indeed") return "bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-500/20";
+                  return "bg-primary/10 text-primary border-primary/20";
+                };
+
+                return (
+                  <div
+                    key={job.url}
+                    className="flex flex-col justify-between rounded-xl border border-border bg-card/60 p-4 transition-all duration-300 hover:-translate-y-1 hover:border-primary/20 hover:shadow-lift"
+                  >
+                    <div>
+                      <div className="mb-2 flex items-start justify-between gap-2">
+                        <Badge className={getSourceBadge(job.source)} variant="outline">
+                          {job.source}
                         </Badge>
-                      )}
-                    </div>
-                    <h3 className="font-display font-medium leading-snug line-clamp-1 text-foreground" title={job.title}>
-                      {job.title}
-                    </h3>
-                    <p className="text-xs text-muted-foreground font-medium mb-2">{job.company}</p>
-                    {job.location && (
-                      <div className="mb-3 flex items-center gap-1 text-[11px] text-muted-foreground">
-                        <span className="shrink-0">📍</span>
-                        <span className="truncate">{job.location}</span>
+                        {job.remote && (
+                          <Badge className="bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/20" variant="outline">
+                            Remote
+                          </Badge>
+                        )}
                       </div>
-                    )}
-                    <p className="mb-4 text-xs text-muted-foreground line-clamp-3 leading-relaxed">
-                      {job.description}
-                    </p>
-                  </div>
-                  <div className="flex gap-2 border-t border-border/55 pt-3">
-                    <Button
-                      className="flex-1 text-xs"
-                      size="sm"
-                      variant={job.alreadyInPipeline ? "secondary" : "default"}
-                      onClick={() => handleImportJob(job)}
-                      disabled={job.alreadyInPipeline || importingJobUrl === job.url}
-                    >
-                      {importingJobUrl === job.url ? (
-                        <Loader2 className="mr-1.5 h-3 w-3 animate-spin" />
-                      ) : job.alreadyInPipeline ? (
-                        "✓ Added"
-                      ) : (
-                        "Add to Pipeline"
+                      <h3 className="font-display font-medium leading-snug line-clamp-1 text-foreground" title={job.title}>
+                        {job.title}
+                      </h3>
+                      <p className="text-xs text-muted-foreground font-medium mb-2">{job.company}</p>
+                      {job.location && (
+                        <div className="mb-3 flex items-center gap-1 text-[11px] text-muted-foreground">
+                          <span className="shrink-0">📍</span>
+                          <span className="truncate">{job.location}</span>
+                        </div>
                       )}
-                    </Button>
-                    <a
-                      href={job.url}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="inline-flex items-center justify-center rounded-md border border-input bg-background p-2 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-                      title="View original posting"
-                    >
-                      <ExternalLink className="h-3.5 w-3.5" />
-                    </a>
+                      <p className="mb-4 text-xs text-muted-foreground line-clamp-3 leading-relaxed">
+                        {job.description}
+                      </p>
+                    </div>
+                    <div className="flex gap-2 border-t border-border/55 pt-3">
+                      <Button
+                        className="flex-1 text-xs"
+                        size="sm"
+                        variant={job.alreadyInPipeline ? "secondary" : "default"}
+                        onClick={() => handleImportJob(job)}
+                        disabled={job.alreadyInPipeline || importingJobUrl === job.url}
+                      >
+                        {importingJobUrl === job.url ? (
+                          <Loader2 className="mr-1.5 h-3 w-3 animate-spin" />
+                        ) : job.alreadyInPipeline ? (
+                          "✓ Added"
+                        ) : (
+                          "Add to Pipeline"
+                        )}
+                      </Button>
+                      <a
+                        href={job.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center justify-center rounded-md border border-input bg-background p-2 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                        title="View original posting"
+                      >
+                        <ExternalLink className="h-3.5 w-3.5" />
+                      </a>
+                    </div>
                   </div>
-                </div>
-              );
-            })}
-          </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
 

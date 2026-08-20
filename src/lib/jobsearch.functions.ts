@@ -8,10 +8,12 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 // Strategy:
 //   1. Query a wide set of FREE, no-key public job APIs in parallel
 //      (Remotive, Arbeitnow, The Muse, Jobicy, RemoteOK). Each one
-//      guarantees title + company + location so cards never look empty.
-//   2. Score, dedupe, and filter (entry-level / remote / location).
-//   3. Only if nothing usable comes back do we fall back to Tavily
-//      web search of ATS boards.
+//      guarantees structured title + company + location so cards are clean.
+//   2. If TAVILY_API_KEY is configured, also query live ATS boards
+//      (Greenhouse, Lever, Ashby, Workday) and job portals (LinkedIn, Naukri,
+//      Cutshort, etc.) and extract postings via AI or heuristic fallback.
+//   3. Merge, deduplicate by canonical URL and (title + company), score against
+//      query/location/mode/remote filters, and check existing pipeline status.
 // =============================================================================
 
 const TAVILY_API = "https://api.tavily.com/search";
@@ -44,8 +46,8 @@ type NormalizedJob = {
   postedAt: string | null;
 };
 
-function clean(text: string | null | undefined, max = 5000) {
-  if (!text) return "";
+function clean(text: unknown, max = 5000): string {
+  if (typeof text !== "string") return "";
   return text
     .replace(/<[^>]+>/g, " ")
     .replace(/&[a-z]+;/gi, " ")
@@ -78,6 +80,22 @@ function scoreJob(j: NormalizedJob, qTokens: string[], loc: string | null, remot
   return s;
 }
 
+function normalizeUrlForDedup(rawUrl: string): string {
+  try {
+    const u = new URL(rawUrl);
+    u.searchParams.delete("utm_source");
+    u.searchParams.delete("utm_medium");
+    u.searchParams.delete("utm_campaign");
+    u.searchParams.delete("ref");
+    u.hash = "";
+    let cleanUrl = u.toString();
+    if (cleanUrl.endsWith("/")) cleanUrl = cleanUrl.slice(0, -1);
+    return cleanUrl;
+  } catch {
+    return rawUrl.trim();
+  }
+}
+
 async function fetchJSON<T>(url: string, init?: RequestInit, timeoutMs = 8000): Promise<T | null> {
   try {
     const res = await fetch(url, {
@@ -96,7 +114,7 @@ async function fetchJSON<T>(url: string, init?: RequestInit, timeoutMs = 8000): 
   }
 }
 
-// --- Source adapters ---------------------------------------------------------
+// --- Free Aggregator Adapters (No API key required) --------------------------
 
 async function fromRemotive(query: string): Promise<NormalizedJob[]> {
   const url = `https://remotive.com/api/remote-jobs?limit=50${query ? `&search=${encodeURIComponent(query)}` : ""}`;
@@ -106,60 +124,67 @@ async function fromRemotive(query: string): Promise<NormalizedJob[]> {
     const company = String(j.company_name ?? "").trim();
     if (!title || !company) return [];
     return [{
-      source: "remotive",
+      source: "Remotive",
       title,
       company,
       location: String(j.candidate_required_location ?? "Remote").trim() || "Remote",
       remote: true,
       url: String(j.url ?? ""),
-      description: clean(String(j.description ?? "")),
+      description: clean(j.description),
       postedAt: (j.publication_date as string) ?? null,
     }];
   });
 }
 
-async function fromArbeitnow(): Promise<NormalizedJob[]> {
+async function fromArbeitnow(query?: string): Promise<NormalizedJob[]> {
   const json = await fetchJSON<{ data?: Array<Record<string, unknown>> }>(
     "https://www.arbeitnow.com/api/job-board-api",
   );
+  const qLower = query?.toLowerCase().trim();
   return (json?.data ?? []).flatMap((j) => {
     const title = String(j.title ?? "").trim();
     const company = String(j.company_name ?? "").trim();
     if (!title || !company) return [];
+    const desc = clean(j.description);
+    if (qLower && !title.toLowerCase().includes(qLower) && !desc.toLowerCase().includes(qLower)) {
+      return [];
+    }
     return [{
-      source: "arbeitnow",
+      source: "Arbeitnow",
       title,
       company,
       location: String(j.location ?? "").trim() || null,
       remote: Boolean(j.remote),
       url: String(j.url ?? ""),
-      description: clean(String(j.description ?? "")),
+      description: desc,
       postedAt: (j.created_at as string) ?? null,
     }];
   });
 }
 
 async function fromTheMuse(query: string, page = 0): Promise<NormalizedJob[]> {
-  // The Muse supports limited filtering; we fetch a page and score client-side.
-  const url = `https://www.themuse.com/api/public/jobs?page=${page}&descending=true${
-    query ? `&category=${encodeURIComponent(query)}` : ""
-  }`;
+  const url = `https://www.themuse.com/api/public/jobs?page=${page}&descending=true`;
   const json = await fetchJSON<{ results?: Array<Record<string, unknown>> }>(url);
+  const qLower = query?.toLowerCase().trim();
   return (json?.results ?? []).flatMap((j) => {
     const title = String(j.name ?? "").trim();
     const company = String((j.company as { name?: string } | undefined)?.name ?? "").trim();
     if (!title || !company) return [];
+    const desc = clean(j.contents);
+    if (qLower && !title.toLowerCase().includes(qLower) && !desc.toLowerCase().includes(qLower)) {
+      return [];
+    }
     const locs = (j.locations as Array<{ name?: string }> | undefined) ?? [];
     const location = locs.map((l) => l.name).filter(Boolean).join(", ") || null;
     const refs = j.refs as { landing_page?: string } | undefined;
     return [{
-      source: "themuse",
+      source: "The Muse",
       title,
       company,
       location,
       remote: /remote/i.test(location ?? ""),
       url: refs?.landing_page ?? "",
-      description: clean(String(j.contents ?? "")),
+      description: desc,
       postedAt: (j.publication_date as string) ?? null,
     }];
   });
@@ -177,35 +202,46 @@ async function fromJobicy(query: string, geo?: string): Promise<NormalizedJob[]>
     const company = String(j.companyName ?? "").trim();
     if (!title || !company) return [];
     return [{
-      source: "jobicy",
+      source: "Jobicy",
       title,
       company,
       location: String(j.jobGeo ?? "Remote").trim() || "Remote",
       remote: true,
       url: String(j.url ?? ""),
-      description: clean(String(j.jobDescription ?? "")),
+      description: clean(j.jobDescription),
       postedAt: (j.pubDate as string) ?? null,
     }];
   });
 }
 
 async function fromRemoteOK(query: string): Promise<NormalizedJob[]> {
-  const url = `https://remoteok.com/api${query ? `?tags=${encodeURIComponent(query.split(/\s+/)[0])}` : ""}`;
+  const url = "https://remoteok.com/api";
   const json = await fetchJSON<Array<Record<string, unknown>>>(url);
   if (!Array.isArray(json)) return [];
-  // First entry is metadata.
+  const qLower = query?.toLowerCase().trim();
+  // First entry in RemoteOK response is disclaimer metadata
   return json.slice(1).flatMap((j) => {
     const title = String(j.position ?? "").trim();
     const company = String(j.company ?? "").trim();
     if (!title || !company) return [];
+    const desc = clean(j.description);
+    const tags = Array.isArray(j.tags) ? j.tags.join(" ") : "";
+    if (
+      qLower &&
+      !title.toLowerCase().includes(qLower) &&
+      !desc.toLowerCase().includes(qLower) &&
+      !tags.toLowerCase().includes(qLower)
+    ) {
+      return [];
+    }
     return [{
-      source: "remoteok",
+      source: "RemoteOK",
       title,
       company,
       location: String(j.location ?? "Remote").trim() || "Remote",
       remote: true,
       url: String(j.url ?? `https://remoteok.com/remote-jobs/${j.id}`),
-      description: clean(String(j.description ?? "")),
+      description: desc,
       postedAt: (j.date as string) ?? null,
     }];
   });
@@ -215,15 +251,21 @@ async function fetchAggregators(query: string, location?: string): Promise<Norma
   const geo = location?.toLowerCase().includes("usa") || location?.toLowerCase().includes("united states")
     ? "usa"
     : undefined;
-  const results = await Promise.all([
-    fromRemotive(query).catch(() => []),
-    fromArbeitnow().catch(() => []),
-    fromTheMuse(query, 0).catch(() => []),
-    fromJobicy(query, geo).catch(() => []),
-    fromRemoteOK(query).catch(() => []),
+
+  const results = await Promise.allSettled([
+    fromRemotive(query),
+    fromArbeitnow(query),
+    fromTheMuse(query, 0),
+    fromJobicy(query, geo),
+    fromRemoteOK(query),
   ]);
-  return results.flat();
+
+  return results
+    .filter((r): r is PromiseFulfilledResult<NormalizedJob[]> => r.status === "fulfilled")
+    .flatMap((r) => r.value);
 }
+
+// --- Web Extraction & Parsing Helpers ----------------------------------------
 
 function cleanTitle(raw: string) {
   let title = raw
@@ -272,10 +314,12 @@ function extractCompany(title: string, content: string, host: string): string {
       "cutshort.io": "Cutshort",
       "iimjobs.com": "iimjobs",
       "indeed.co.in": "Indeed India",
+      "indeed.com": "Indeed",
       "timesjobs.com": "TimesJobs",
       "freshersworld.com": "Freshersworld",
       "internshala.com": "Internshala",
       "glassdoor.co.in": "Glassdoor India",
+      "glassdoor.com": "Glassdoor",
       "linkedin.com": "LinkedIn",
       "apna.co": "Apna",
       "wellfound.com": "Wellfound",
@@ -298,6 +342,7 @@ function extractLocation(title: string, content: string): string | null {
     "Bengaluru", "Bangalore", "Mumbai", "Delhi", "Gurgaon", "Gurugram",
     "Noida", "Hyderabad", "Pune", "Chennai", "Kolkata", "Ahmedabad",
     "Jaipur", "Kochi", "Coimbatore", "Indore", "Chandigarh", "Remote",
+    "San Francisco", "New York", "London", "Berlin", "Toronto", "Austin", "Seattle",
   ];
   for (const c of cities) {
     if (new RegExp(`\\b${c}\\b`, "i").test(hay)) {
@@ -308,16 +353,10 @@ function extractLocation(title: string, content: string): string | null {
 }
 
 function isListingPage(url: string, title: string): boolean {
-  const lowerUrl = url.toLowerCase();
-  const lowerTitle = title.toLowerCase();
-
-  // Pattern matching numbers of jobs, vacancies, or positions anywhere in the title
-  // E.g., "16 Prevalent Ai Jobs", "41855 Google Cloud Ai Job Vacancies"
   if (/\b\d{2,}\b.*?\b(jobs|openings|vacancies|positions|opportunities|roles)\b/i.test(title)) {
     return true;
   }
 
-  // Broad URL listing patterns
   const listingPatterns = [
     /\/jobs-in-/i,
     /\/job-search/i,
@@ -335,7 +374,6 @@ function isListingPage(url: string, title: string): boolean {
     return true;
   }
 
-  // Common title keywords for listing pages
   const listingTitleKeywords = [
     /\b(vacancies|openings|positions|opportunities)\b/i,
     /\b(latest|best|top)\s+.*?\bjobs\b/i,
@@ -363,7 +401,6 @@ function isRealJobUrl(url: string, title: string): boolean {
       return false;
     }
 
-    // Portal specific validations (relaxed to allow listing pages)
     if (host.includes("naukri.com")) {
       return path.includes("/job-listings-") || path.includes("-jobs") || path.includes("/jobs-in-");
     }
@@ -392,21 +429,19 @@ function isRealJobUrl(url: string, title: string): boolean {
       return path.includes("/jobs/");
     }
     if (host.includes("greenhouse.io")) {
-      return path.includes("/jobs/") || /\/jobs\/\d+/.test(path);
+      return path.includes("/jobs/") || /\/jobs\/\d+/.test(path) || path.split("/").filter(Boolean).length >= 2;
     }
     if (host.includes("lever.co")) {
-      const parts = path.split("/").filter(Boolean);
-      return parts.length >= 2;
+      return path.split("/").filter(Boolean).length >= 2;
     }
     if (host.includes("ashbyhq.com")) {
-      return path.includes("/jobs/");
+      return path.includes("/jobs/") || path.split("/").filter(Boolean).length >= 2;
     }
     if (host.includes("myworkdayjobs.com")) {
       return path.includes("/job/");
     }
     if (host.includes("smartrecruiters.com")) {
-      const parts = path.split("/").filter(Boolean);
-      return parts.length >= 2;
+      return path.split("/").filter(Boolean).length >= 2;
     }
     if (host.includes("wellfound.com")) {
       return path.includes("/jobs/");
@@ -419,13 +454,45 @@ function isRealJobUrl(url: string, title: string): boolean {
     }
 
     if (path === "/" || path === "") return false;
-
     return true;
   } catch {
     return false;
   }
 }
 
+function getJobSource(url: string): string {
+  try {
+    const u = new URL(url);
+    const host = u.hostname.replace(/^www\./, "");
+    if (host.includes("linkedin.com")) return "LinkedIn";
+    if (host.includes("indeed.com")) return "Indeed";
+    if (host.includes("glassdoor.com")) return "Glassdoor";
+    if (host.includes("naukri.com")) return "Naukri";
+    if (host.includes("instahyre.com")) return "Instahyre";
+    if (host.includes("cutshort.io")) return "Cutshort";
+    if (host.includes("hirist.tech")) return "Hirist";
+    if (host.includes("foundit.in")) return "Foundit";
+    if (host.includes("greenhouse.io")) return "Greenhouse";
+    if (host.includes("lever.co")) return "Lever";
+    if (host.includes("ashbyhq.com")) return "Ashby";
+    if (host.includes("myworkdayjobs.com")) return "Workday";
+    if (host.includes("smartrecruiters.com")) return "SmartRecruiters";
+    if (host.includes("wellfound.com")) return "Wellfound";
+    if (host.includes("ycombinator.com")) return "YCombinator";
+    if (host.includes("weworkremotely.com")) return "WeWorkRemotely";
+    if (host.includes("remotive.com")) return "Remotive";
+    if (host.includes("arbeitnow.com")) return "Arbeitnow";
+    if (host.includes("themuse.com")) return "The Muse";
+    if (host.includes("jobicy.com")) return "Jobicy";
+    if (host.includes("remoteok.com")) return "RemoteOK";
+    return host.split(".")[0].toUpperCase();
+  } catch {
+    return "Web";
+  }
+}
+
+// =============================================================================
+// Server Functions
 // =============================================================================
 
 export const searchJobsWeb = createServerFn({ method: "POST" })
@@ -456,255 +523,173 @@ export const searchJobsWeb = createServerFn({ method: "POST" })
     }
     const loc = data.location?.trim() || undefined;
 
-    // Determine if the search location is in India to filter domains
-    const isIndia = loc
-      ? /india|bengaluru|bangalore|mumbai|delhi|gurgaon|gurugram|noida|hyderabad|pune|chennai|kolkata|jaipur/i.test(loc)
-      : true; // Default to true for local optimization
+    // 1. Fetch free public job aggregators (No API key needed)
+    const aggregatorPromise = fetchAggregators(q, loc).catch((err) => {
+      console.error("[searchJobsWeb] Aggregator fetch failed:", err);
+      return [] as NormalizedJob[];
+    });
 
-    const key = process.env.TAVILY_API_KEY;
-    if (!key) {
-      return {
-        success: false,
-        jobs: [],
-        error: "Job search is currently unavailable: TAVILY_API_KEY is not configured.",
-      };
-    }
+    // 2. Fetch Tavily live web & ATS searches if TAVILY_API_KEY is available
+    const tavilyKey = process.env.TAVILY_API_KEY;
+    const tavilyPromise = (async (): Promise<NormalizedJob[]> => {
+      if (!tavilyKey) return [];
 
-    // Formulate search streams targeting portals, ATS systems, and general web career pages
-    const searchQueries: Array<{ qText: string; domains: string[] }> = [
-      // 1. ATS Boards
-      {
-        qText: `"${q}" ${loc ? `"${loc}"` : ""} ("job description" OR "apply" OR "requirements")`,
-        domains: ["boards.greenhouse.io", "jobs.lever.co", "jobs.ashbyhq.com", "myworkdayjobs.com", "smartrecruiters.com"],
-      },
-      // 2. Global Portals & Startups
-      {
-        qText: `"${q}" ${loc ? `"${loc}"` : ""} ("apply" OR "job posting")`,
-        domains: ["linkedin.com", "indeed.com", "glassdoor.com", "wellfound.com", "ycombinator.com", "weworkremotely.com"],
-      },
-      // 3. General Startup Career Pages (entire web search for startup roles)
-      {
-        qText: `"${q}" ${loc ? `"${loc}"` : ""} ("careers" OR "hiring" OR "join us") "job description"`,
-        domains: [], // No domain restrictions to capture direct startup website listings
-      }
-    ];
+      const isIndia = loc
+        ? /india|bengaluru|bangalore|mumbai|delhi|gurgaon|gurugram|noida|hyderabad|pune|chennai|kolkata|jaipur/i.test(loc)
+        : true;
 
-    // 4. Indian Portals & Startups (if location matches India)
-    if (isIndia) {
-      searchQueries.push({
-        qText: `"${q}" ${loc ? `"${loc}"` : "India"} ("apply" OR "job posting" OR "experience")`,
-        domains: ["naukri.com", "instahyre.com", "cutshort.io", "hirist.tech", "foundit.in"],
-      });
-    }
+      const searchQueries: Array<{ qText: string; domains: string[] }> = [
+        // ATS Boards
+        {
+          qText: `"${q}" ${loc ? `"${loc}"` : ""} ("job description" OR "apply" OR "requirements")`,
+          domains: ["boards.greenhouse.io", "jobs.lever.co", "jobs.ashbyhq.com", "myworkdayjobs.com", "smartrecruiters.com"],
+        },
+        // Global Portals & Startups
+        {
+          qText: `"${q}" ${loc ? `"${loc}"` : ""} ("apply" OR "job posting")`,
+          domains: ["linkedin.com", "indeed.com", "glassdoor.com", "wellfound.com", "ycombinator.com", "weworkremotely.com"],
+        },
+        // General Startup Career Pages
+        {
+          qText: `"${q}" ${loc ? `"${loc}"` : ""} ("careers" OR "hiring" OR "join us") "job description"`,
+          domains: [],
+        },
+      ];
 
-    const searchTasks = searchQueries.map(async ({ qText, domains }) => {
-      try {
-        const res = await fetch(TAVILY_API, {
-          method: "POST",
-          signal: AbortSignal.timeout(12_000),
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            api_key: key,
-            query: qText,
-            search_depth: "advanced",
-            max_results: 15,
-            include_domains: domains.length > 0 ? domains : undefined,
-            time_range: "week", // Ensure active and latest jobs
-            include_raw_content: true,
-          }),
+      if (isIndia) {
+        searchQueries.push({
+          qText: `"${q}" ${loc ? `"${loc}"` : "India"} ("apply" OR "job posting" OR "experience")`,
+          domains: ["naukri.com", "instahyre.com", "cutshort.io", "hirist.tech", "foundit.in"],
         });
-        if (!res.ok) return [];
-        const json = (await res.json()) as {
-          results?: Array<{ url?: string; title?: string; content?: string; raw_content?: string }>;
-        };
-        return json.results ?? [];
-      } catch (e) {
-        console.error(`[searchJobsWeb] Tavily query failed for "${qText}":`, e);
-        return [];
       }
-    });
 
-    const searchResponses = await Promise.all(searchTasks);
-    const rawResults = searchResponses.flat();
+      const searchTasks = searchQueries.map(async ({ qText, domains }) => {
+        try {
+          const res = await fetch(TAVILY_API, {
+            method: "POST",
+            signal: AbortSignal.timeout(12_000),
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              api_key: tavilyKey,
+              query: qText,
+              search_depth: "advanced",
+              max_results: 15,
+              include_domains: domains.length > 0 ? domains : undefined,
+              time_range: "week",
+              include_raw_content: true,
+            }),
+          });
+          if (!res.ok) return [];
+          const json = (await res.json()) as {
+            results?: Array<{ url?: string; title?: string; content?: string; raw_content?: string }>;
+          };
+          return json.results ?? [];
+        } catch (e) {
+          console.error(`[searchJobsWeb] Tavily query failed for "${qText}":`, e);
+          return [];
+        }
+      });
 
-    // Heuristics URL & Title Blockers
-    const BAD_URL_PATTERNS = [
-      /\/blog\b/i,
-      /\/blogs\b/i,
-      /\/news\b/i,
-      /\/resource\b/i,
-      /\/guide\b/i,
-      /\/how-to\b/i,
-      /\/resume\b/i,
-      /\/interview\b/i,
-      /\/course\b/i,
-      /\/courses\b/i,
-      /\/salary\b/i,
-      /\/hiring-advice\b/i,
-      /\/career-path\b/i,
-      /\/questions\b/i,
-      /\/forum\b/i,
-      /\/discussion\b/i,
-      /\/insights\b/i,
-      /\/press\b/i,
-      /\/support\b/i,
-      /\/help\b/i,
-      /\/login\b/i,
-      /\/register\b/i,
-      /\/signup\b/i,
-    ];
+      const searchResponses = await Promise.all(searchTasks);
+      const rawResults = searchResponses.flat();
 
-    const BAD_TITLE_PATTERNS = [
-      /\bhow to\b/i,
-      /\btips\b/i,
-      /\bquestions\b/i,
-      /\banswers\b/i,
-      /\bbest jobs\b/i,
-      /\btop \d+\b/i,
-      /\bguide\b/i,
-      /\bresume\b/i,
-      /\bsalary guide\b/i,
-      /\binterview questions\b/i,
-      /\bcourse\b/i,
-      /\bclasses\b/i,
-      /\bcertification\b/i,
-    ];
+      const BAD_URL_PATTERNS = [
+        /\/blog\b/i, /\/blogs\b/i, /\/news\b/i, /\/resource\b/i, /\/guide\b/i,
+        /\/how-to\b/i, /\/resume\b/i, /\/interview\b/i, /\/course\b/i, /\/courses\b/i,
+        /\/salary\b/i, /\/hiring-advice\b/i, /\/career-path\b/i, /\/questions\b/i,
+        /\/forum\b/i, /\/discussion\b/i, /\/insights\b/i, /\/press\b/i, /\/support\b/i,
+        /\/help\b/i, /\/login\b/i, /\/register\b/i, /\/signup\b/i,
+      ];
 
-    const candidates = rawResults.filter((r): r is { url: string; title: string; content: string; raw_content?: string } => {
-      const url = r.url;
-      const title = r.title;
-      if (!url || !title) return false;
-      if (BAD_URL_PATTERNS.some((p) => p.test(url))) return false;
-      if (BAD_TITLE_PATTERNS.some((p) => p.test(title))) return false;
-      return isRealJobUrl(url, title);
-    });
+      const BAD_TITLE_PATTERNS = [
+        /\bhow to\b/i, /\btips\b/i, /\bquestions\b/i, /\banswers\b/i, /\bbest jobs\b/i,
+        /\btop \d+\b/i, /\bguide\b/i, /\bresume\b/i, /\bsalary guide\b/i,
+        /\binterview questions\b/i, /\bcourse\b/i, /\bclasses\b/i, /\bcertification\b/i,
+      ];
 
-    function getJobSource(url: string): string {
-      try {
-        const u = new URL(url);
-        const host = u.hostname.replace(/^www\./, "");
-        if (host.includes("linkedin.com")) return "LinkedIn";
-        if (host.includes("indeed.com")) return "Indeed";
-        if (host.includes("glassdoor.com")) return "Glassdoor";
-        if (host.includes("naukri.com")) return "Naukri";
-        if (host.includes("instahyre.com")) return "Instahyre";
-        if (host.includes("cutshort.io")) return "Cutshort";
-        if (host.includes("hirist.tech")) return "Hirist";
-        if (host.includes("foundit.in")) return "Foundit";
-        if (host.includes("greenhouse.io")) return "Greenhouse";
-        if (host.includes("lever.co")) return "Lever";
-        if (host.includes("ashbyhq.com")) return "Ashby";
-        if (host.includes("myworkdayjobs.com")) return "Workday";
-        if (host.includes("smartrecruiters.com")) return "SmartRecruiters";
-        if (host.includes("wellfound.com")) return "Wellfound";
-        if (host.includes("ycombinator.com")) return "YCombinator";
-        if (host.includes("weworkremotely.com")) return "WeWorkRemotely";
-        return host;
-      } catch {
-        return "Web";
-      }
-    }
+      const candidates = rawResults.filter((r): r is { url: string; title: string; content: string; raw_content?: string } => {
+        const url = r.url;
+        const title = r.title;
+        if (!url || !title) return false;
+        if (BAD_URL_PATTERNS.some((p) => p.test(url))) return false;
+        if (BAD_TITLE_PATTERNS.some((p) => p.test(title))) return false;
+        return isRealJobUrl(url, title);
+      });
 
-    let finalJobs: Array<{
-      source: string;
-      title: string;
-      company: string;
-      location: string | null;
-      remote: boolean;
-      url: string;
-      description: string;
-      postedAt: string | null;
-    }> = [];
+      if (candidates.length === 0) return [];
 
-    // AI Filter & Extraction
-    if (candidates.length > 0) {
-      try {
-        const { generateObject } = await import("ai");
-        const { getGateway } = await import("@/lib/ai-gateway.server");
-        const gateway = getGateway();
+      const tavilyExtracted: NormalizedJob[] = [];
 
-        // Limit payload size to avoid token overflow
-        const listToEvaluate = candidates.slice(0, 25).map((c, idx) => {
-          const isPossibleList = isListingPage(c.url, c.title);
-          return {
+      // AI-assisted parsing if Mistral API key is set
+      if (process.env.MISTRAL_API_KEY) {
+        try {
+          const { generateObject } = await import("ai");
+          const { getGateway } = await import("@/lib/ai-gateway.server");
+          const gateway = getGateway();
+
+          const listToEvaluate = candidates.slice(0, 20).map((c, idx) => ({
             index: idx,
             title: c.title,
             url: c.url,
-            isPossibleList,
+            isPossibleList: isListingPage(c.url, c.title),
             snippet: c.content ? c.content.slice(0, 300) : "",
             raw_content: c.raw_content
-              ? c.raw_content.slice(0, 6000)
+              ? c.raw_content.slice(0, 4000)
               : (c.content ? c.content.slice(0, 500) : ""),
-          };
-        });
+          }));
 
-        const response = await generateObject({
-          model: gateway("google/gemini-2.5-flash"),
-          system: `You are an expert recruitment AI. Your task is to analyze web search results and extract SPECIFIC, INDIVIDUAL job postings (specific roles at specific companies that a candidate can apply to).
-
-A candidate search result (provided with title, url, snippet, raw_content, and isPossibleList flag) can be:
-- An individual job description page (details for a single opening).
-- A job search/listing page, directory, or aggregate page containing multiple jobs.
-- Irrelevant content (blogs, guides, courses, articles, homepages, login pages) - discard these.
-
-For each relevant search result:
-1. If it is an individual job description page, extract that single job.
-2. If it is a listing/aggregate/search page, extract ALL the individual job postings listed. For each extracted job, look at the raw_content or snippet to find:
-   - Clean Job Title: Extract only the job role/title (e.g. "Software Engineer" or "React Developer"). Strip company slogans, "hiring for", location suffixes, and other boilerplate.
-   - Company Name: Extract the actual employer/company. Do NOT name the portal/site (e.g. if the job is on Cutshort or Naukri, extract the company hiring like "SynRadar" or "Steps AI", not "Cutshort" or "Naukri"). If the company cannot be found, use the domain name without suffix.
-   - Location: Specific location if mentioned, or null.
-   - Remote: Is it remote/WFH?
-   - URL: The specific URL for this individual job. If a specific URL (like a direct job link) is available in the text/raw_content, extract it. Otherwise, fallback to the parent page URL.
-   - Description: A brief description snippet of the job requirements or role (1-2 sentences).
-
-STRICTLY EXCLUDE aggregate listing pages as single jobs. You MUST decompose them into individual jobs. If you cannot extract any individual jobs from a list page, discard it.`,
-          prompt: `Search Query: "${q}"\nLocation: "${loc ?? ""}"\n\nAnalyze these candidates:\n${JSON.stringify(listToEvaluate, null, 2)}`,
-          schema: z.object({
-            jobs: z.array(
-              z.object({
-                parentIndex: z.number().int().describe("The index of the candidate search result from the input list"),
-                title: z.string().describe("Cleaned job title"),
-                company: z.string().describe("Cleaned hiring company name"),
-                location: z.string().nullable().describe("Specific location if mentioned, or null"),
-                remote: z.boolean().describe("Is the job remote?"),
-                url: z.string().describe("The specific job detail URL or fallback to the parent page URL"),
-                description: z.string().describe("Brief description of the job requirements/role"),
-              })
-            ),
-          }),
-        });
-
-        for (const item of response.object.jobs) {
-          const orig = candidates[item.parentIndex];
-          if (!orig) continue;
-
-          let jobUrl = item.url ? item.url.trim() : orig.url;
-          if (!jobUrl.startsWith("http://") && !jobUrl.startsWith("https://")) {
-            jobUrl = orig.url;
-          }
-
-          finalJobs.push({
-            source: getJobSource(jobUrl),
-            title: item.title || orig.title,
-            company: item.company || "Unknown",
-            location: item.location,
-            remote: item.remote,
-            url: jobUrl,
-            description: item.description || orig.content || "",
-            postedAt: null,
+          const response = await generateObject({
+            model: gateway("google/gemini-2.5-flash"),
+            system: `You are an expert recruitment AI. Analyze web search results and extract SPECIFIC, INDIVIDUAL job postings (role, company, location, url, short description). Discard blogs/guides/login pages.`,
+            prompt: `Search Query: "${q}"\nLocation: "${loc ?? ""}"\n\nAnalyze candidates:\n${JSON.stringify(listToEvaluate, null, 2)}`,
+            schema: z.object({
+              jobs: z.array(
+                z.object({
+                  parentIndex: z.number().int(),
+                  title: z.string().describe("Cleaned job title"),
+                  company: z.string().describe("Cleaned hiring company name"),
+                  location: z.string().nullable(),
+                  remote: z.boolean(),
+                  url: z.string().describe("Specific job detail URL or parent page URL"),
+                  description: z.string().describe("Brief description of role"),
+                }),
+              ),
+            }),
           });
+
+          for (const item of response.object.jobs) {
+            const orig = candidates[item.parentIndex];
+            if (!orig) continue;
+            let jobUrl = item.url ? item.url.trim() : orig.url;
+            if (!jobUrl.startsWith("http://") && !jobUrl.startsWith("https://")) {
+              jobUrl = orig.url;
+            }
+            tavilyExtracted.push({
+              source: getJobSource(jobUrl),
+              title: item.title || orig.title,
+              company: item.company || "Unknown",
+              location: item.location,
+              remote: item.remote,
+              url: jobUrl,
+              description: item.description || orig.content || "",
+              postedAt: null,
+            });
+          }
+        } catch (err) {
+          console.error("[searchJobsWeb] AI extraction failed, falling back to heuristic parsing:", err);
         }
-      } catch (err) {
-        console.error("[searchJobsWeb] AI extraction failed, falling back to heuristics:", err);
-        // Heuristic fallback: strictly filter out listing pages
+      }
+
+      // Fallback heuristic extraction if AI did not return jobs
+      if (tavilyExtracted.length === 0) {
         const filteredCandidates = candidates.filter((c) => !isListingPage(c.url, c.title));
-        finalJobs = filteredCandidates.map((c) => {
+        for (const c of filteredCandidates) {
           const source = getJobSource(c.url);
           const title = cleanTitle(c.title);
           const content = clean(c.content);
           const company = extractCompany(c.title, content, new URL(c.url).hostname);
           const location = extractLocation(c.title, content);
-          return {
+          tavilyExtracted.push({
             source,
             title,
             company,
@@ -713,37 +698,57 @@ STRICTLY EXCLUDE aggregate listing pages as single jobs. You MUST decompose them
             url: c.url,
             description: content || c.title,
             postedAt: null,
-          };
-        });
+          });
+        }
       }
-    }
 
-    // Deduplicate by URL
+      return tavilyExtracted;
+    })();
+
+    // 3. Wait for all sources
+    const [aggregatorJobs, tavilyJobs] = await Promise.all([aggregatorPromise, tavilyPromise]);
+    const allJobs = [...aggregatorJobs, ...tavilyJobs];
+
+    // 4. Deduplicate by canonical URL and (title + company)
     const seenUrls = new Set<string>();
-    const dedupedJobs = [];
-    for (const job of finalJobs) {
-      if (seenUrls.has(job.url)) continue;
-      seenUrls.add(job.url);
+    const seenTitleCompany = new Set<string>();
+    const dedupedJobs: NormalizedJob[] = [];
+
+    for (const job of allJobs) {
+      const normUrl = normalizeUrlForDedup(job.url);
+      const titleCompKey = `${job.title.toLowerCase().replace(/[^a-z0-9]/g, "")}::${job.company.toLowerCase().replace(/[^a-z0-9]/g, "")}`;
+
+      if (seenUrls.has(normUrl) || seenTitleCompany.has(titleCompKey)) {
+        continue;
+      }
+      seenUrls.add(normUrl);
+      seenTitleCompany.add(titleCompKey);
       dedupedJobs.push(job);
     }
 
-    // Score jobs lightly based on keywords for sorting (remoteOnly & query tokens)
+    // 5. Filter by remote / entry-level mode
+    let filtered = dedupedJobs;
+    if (data.remoteOnly) {
+      filtered = filtered.filter((j) => j.remote);
+    }
+    if (data.mode === "entry_level") {
+      const entryLevelOnly = filtered.filter((j) => isEntryLevel(j));
+      if (entryLevelOnly.length >= 5) {
+        filtered = entryLevelOnly;
+      }
+    }
+
+    // 6. Score and sort matches
     const qTokens = tokens(q);
-    dedupedJobs.sort(
+    filtered.sort(
       (a, b) =>
         scoreJob(b, qTokens, loc ?? null, !!data.remoteOnly) -
         scoreJob(a, qTokens, loc ?? null, !!data.remoteOnly),
     );
 
-    // Apply remote only filtering if selected
-    let filtered = dedupedJobs;
-    if (data.remoteOnly) {
-      filtered = filtered.filter((j) => j.remote);
-    }
-
     const top = filtered.slice(0, data.limit);
 
-    // Check pipeline status
+    // 7. Check if already added to user's pipeline in Supabase
     const urls = top.map((j) => j.url);
     let existingSet = new Set<string>();
     if (urls.length > 0) {
@@ -760,9 +765,17 @@ STRICTLY EXCLUDE aggregate listing pages as single jobs. You MUST decompose them
       alreadyInPipeline: existingSet.has(j.url),
     }));
 
+    const distinctSources = Array.from(new Set(top.map((j) => j.source)));
+
     return {
       success: true,
       jobs: jobsWithStatus,
+      sourceMeta: {
+        queriedAggregators: true,
+        tavilyEnabled: Boolean(tavilyKey),
+        totalDiscovered: filtered.length,
+        sources: distinctSources,
+      },
       error: null,
     };
   });
