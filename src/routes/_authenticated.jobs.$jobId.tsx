@@ -582,24 +582,24 @@ function JobDetail() {
 
       {/* Chrome Agent Modal */}
       <Dialog open={agentDialogOpen} onOpenChange={setAgentDialogOpen}>
-        <DialogContent className="sm:max-w-lg border border-border bg-card text-foreground shadow-soft">
+        <DialogContent className="w-[calc(100vw-2rem)] sm:max-w-lg border border-border bg-card text-foreground shadow-soft overflow-hidden p-5 sm:p-6">
           <DialogHeader>
             <div className="flex items-center gap-2.5">
-              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10 text-primary">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
                 <Zap className="h-5 w-5" />
               </div>
-              <div>
-                <DialogTitle className="font-display text-xl">Auto-Apply with Chrome Agent</DialogTitle>
-                <DialogDescription className="text-xs text-muted-foreground">
+              <div className="min-w-0 flex-1">
+                <DialogTitle className="font-display text-lg sm:text-xl truncate">Auto-Apply with Chrome Agent</DialogTitle>
+                <DialogDescription className="text-xs text-muted-foreground mt-0.5">
                   Fill application fields and tailored screening answers directly in Chrome via CDP.
                 </DialogDescription>
               </div>
             </div>
           </DialogHeader>
 
-          <div className="mt-4 space-y-3">
+          <div className="mt-3 space-y-3 w-full min-w-0">
             {j.source_url && (
-              <div className="rounded-lg border border-border bg-background/60 p-3.5 space-y-2">
+              <div className="rounded-lg border border-border bg-background/60 p-3 space-y-2 w-full min-w-0">
                 <div className="text-xs font-semibold text-foreground flex items-center justify-between">
                   <span>Method 1: Direct Browser Page</span>
                   <Badge variant="outline" className="text-[10px]">Active Job</Badge>
@@ -615,15 +615,15 @@ function JobDetail() {
               </div>
             )}
 
-            <div className="rounded-lg border border-border bg-background/60 p-3.5 space-y-2">
+            <div className="rounded-lg border border-border bg-background/60 p-3 space-y-2 w-full min-w-0">
               <div className="text-xs font-semibold text-foreground flex items-center gap-1.5">
-                <Terminal className="h-3.5 w-3.5 text-primary" /> Method 2: Local CLI Agent (`chrome-agent`)
+                <Terminal className="h-3.5 w-3.5 text-primary shrink-0" /> Method 2: Local CLI Agent (`chrome-agent`)
               </div>
               <p className="text-xs text-muted-foreground leading-relaxed">
                 Connects to your Chrome session on port 9222 and applies with tailored Knowledge Base answers:
               </p>
-              <div className="flex items-center gap-2 rounded-md bg-secondary/50 p-2 font-mono text-[11px] text-foreground border border-border">
-                <code className="flex-1 truncate">
+              <div className="flex items-center gap-2 rounded-md bg-secondary/50 p-2 font-mono text-[11px] text-foreground border border-border w-full min-w-0 overflow-hidden">
+                <code className="flex-1 min-w-0 truncate block text-[11px]">
                   {`python scripts/chrome_agent_runner.py --url "${j.source_url || "https://..."}"`}
                 </code>
                 <Button

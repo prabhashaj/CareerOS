@@ -4,7 +4,8 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 import ReactMarkdown from "react-markdown";
-import { Sparkles, Trash2, AlertTriangle, Wand2 } from "lucide-react";
+import { Sparkles, Trash2, AlertTriangle, Wand2, Zap, Check } from "lucide-react";
+import { useAuth } from "@/hooks/use-auth";
 import { getMyProfile, updateMyProfile } from "@/lib/profile.functions";
 import { expandProfile } from "@/lib/expand.functions";
 import { analyzeWritingStyle, clearWritingStyle, type WritingStyle } from "@/lib/style.functions";
@@ -320,9 +321,58 @@ function SettingsPage() {
         <Button type="submit">Save profile</Button>
       </form>
 
+      <ExtensionSection />
       <ExpandSection />
       <WritingStyleSection currentStyle={(data?.preferences as { writing_style?: WritingStyle } | null)?.writing_style ?? null} />
       <DangerZone />
+    </div>
+  );
+}
+
+function ExtensionSection() {
+  const { session } = useAuth();
+  const [synced, setSynced] = useState(false);
+
+  const connectExtension = () => {
+    if (!session?.access_token) {
+      toast.error("Please sign in first");
+      return;
+    }
+    const payload = {
+      access_token: session.access_token,
+      refresh_token: session.refresh_token,
+      user: session.user,
+      app_url: window.location.origin,
+      api_url: window.location.origin,
+    };
+    window.postMessage({ type: "JOBPILOT_AUTH", payload }, "*");
+    window.postMessage({ type: "CAREEROS_AUTH", payload }, "*");
+    setSynced(true);
+    toast.success("Extension connected successfully! Open the extension popup to verify.");
+    setTimeout(() => setSynced(false), 3000);
+  };
+
+  return (
+    <div className="mt-8 max-w-2xl space-y-4 rounded-xl border border-border bg-card p-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-lg font-medium flex items-center gap-2">
+            <Zap className="h-5 w-5 text-primary" /> CareerOS Chrome Extension
+          </h2>
+          <p className="text-sm text-muted-foreground mt-0.5">
+            Sync your CareerOS session with the browser extension for 1-click job importing and autofill.
+          </p>
+        </div>
+      </div>
+      <div className="flex flex-wrap items-center gap-3">
+        <Button onClick={connectExtension} className="font-semibold">
+          {synced ? <Check className="mr-2 h-4 w-4" /> : <Zap className="mr-2 h-4 w-4" />}
+          {synced ? "Connected!" : "Connect Extension to Account"}
+        </Button>
+        <span className="text-xs text-muted-foreground">
+          Make sure the extension is installed in Chrome
+        </span>
+      </div>
     </div>
   );
 }

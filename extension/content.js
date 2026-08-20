@@ -9,20 +9,20 @@
   window.addEventListener("message", (event) => {
     if (event.source !== window) return;
     const msg = event.data;
-    if (!msg || msg.type !== "JOBPILOT_AUTH" || !msg.payload?.access_token) return;
+    if (!msg || (msg.type !== "JOBPILOT_AUTH" && msg.type !== "CAREEROS_AUTH") || !msg.payload?.access_token) return;
     try {
       chrome.runtime.sendMessage(
         { type: "JOBPILOT_AUTH_PAYLOAD", payload: msg.payload },
         (resp) => {
           window.postMessage(
-            { type: "JOBPILOT_AUTH_ACK", ok: !!resp?.ok, error: resp?.error || null },
+            { type: "CAREEROS_AUTH_ACK", ok: !!resp?.ok, error: resp?.error || null },
             window.location.origin,
           );
         },
       );
     } catch (e) {
       window.postMessage(
-        { type: "JOBPILOT_AUTH_ACK", ok: false, error: String(e) },
+        { type: "CAREEROS_AUTH_ACK", ok: false, error: String(e) },
         window.location.origin,
       );
     }

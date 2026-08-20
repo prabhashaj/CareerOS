@@ -17,6 +17,7 @@ import {
   GraduationCap,
   Mic,
   Sprout,
+  Zap,
   MoreHorizontal,
   Eye,
   Terminal,
@@ -884,41 +885,41 @@ function JobsPage() {
         </div>
       )}
 
-      {/* Chrome Agent Discovery Modal */}
+      {/* Chrome Agent Modal */}
       <Dialog open={cdpDialogOpen} onOpenChange={setCdpDialogOpen}>
-        <DialogContent className="sm:max-w-lg border border-border bg-card text-foreground shadow-soft">
+        <DialogContent className="w-[calc(100vw-2rem)] sm:max-w-lg border border-border bg-card text-foreground shadow-soft overflow-hidden p-5 sm:p-6">
           <DialogHeader>
             <div className="flex items-center gap-2.5">
-              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                <Sparkles className="h-5 w-5" />
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                <Zap className="h-5 w-5" />
               </div>
-              <div>
-                <DialogTitle className="font-display text-xl">Chrome Agent Job Discovery</DialogTitle>
-                <DialogDescription className="text-xs text-muted-foreground">
+              <div className="min-w-0 flex-1">
+                <DialogTitle className="font-display text-lg sm:text-xl truncate">Chrome Agent Job Discovery</DialogTitle>
+                <DialogDescription className="text-xs text-muted-foreground mt-0.5">
                   Crawl live job boards (LinkedIn, Greenhouse, Ashby, Lever) through your Chrome session.
                 </DialogDescription>
               </div>
             </div>
           </DialogHeader>
 
-          <div className="mt-4 space-y-3">
-            <div className="rounded-lg border border-border bg-background/60 p-3.5 space-y-2">
+          <div className="mt-3 space-y-3 w-full min-w-0">
+            <div className="rounded-lg border border-border bg-background/60 p-3 space-y-2 w-full min-w-0">
               <div className="text-xs font-semibold text-foreground flex items-center gap-1.5">
-                <Terminal className="h-3.5 w-3.5 text-primary" /> Autonomous Background Crawler
+                <Terminal className="h-3.5 w-3.5 text-primary shrink-0" /> Autonomous Background Crawler
               </div>
               <p className="text-xs text-muted-foreground leading-relaxed">
                 Connects directly to your Chrome browser over DevTools Protocol, scrolls live search feeds, and syncs matched jobs into your pipeline:
               </p>
-              <div className="flex items-center gap-2 rounded-md bg-secondary/50 p-2 font-mono text-[11px] text-foreground border border-border">
-                <code className="flex-1 truncate">
-                  {`python scripts/chrome_agent_runner.py --search "${searchQ || "Software Engineer"}" --location "${searchLoc || "Remote"}"`}
+              <div className="flex items-center gap-2 rounded-md bg-secondary/50 p-2 font-mono text-[11px] text-foreground border border-border w-full min-w-0 overflow-hidden">
+                <code className="flex-1 min-w-0 truncate block text-[11px]">
+                  {`python scripts/chrome_agent_runner.py --search "${searchQ || "Software Engineer"}" --location "${searchLoc || "India"}"`}
                 </code>
                 <Button
                   size="icon"
                   variant="ghost"
                   className="h-6 w-6 shrink-0"
                   onClick={() => {
-                    navigator.clipboard.writeText(`python scripts/chrome_agent_runner.py --search "${searchQ || "Software Engineer"}" --location "${searchLoc || "Remote"}"`);
+                    navigator.clipboard.writeText(`python scripts/chrome_agent_runner.py --search "${searchQ || "Software Engineer"}" --location "${searchLoc || "India"}"`);
                     setCopiedCmd(true);
                     toast.success("Command copied to clipboard");
                     setTimeout(() => setCopiedCmd(false), 2000);
@@ -929,9 +930,9 @@ function JobsPage() {
               </div>
             </div>
 
-            <div className="rounded-lg border border-border bg-background/60 p-3.5 space-y-1.5">
+            <div className="rounded-lg border border-border bg-background/60 p-3 space-y-1.5 w-full min-w-0">
               <div className="text-xs font-semibold text-foreground flex items-center gap-1.5">
-                <Globe className="h-3.5 w-3.5 text-primary" /> 1-Click Page Importer
+                <Globe className="h-3.5 w-3.5 text-primary shrink-0" /> 1-Click Page Importer
               </div>
               <p className="text-xs text-muted-foreground leading-relaxed">
                 Whenever you browse any job posting on LinkedIn or direct ATS boards, click the CareerOS extension to instantly extract and save the role.
