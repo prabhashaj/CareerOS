@@ -270,14 +270,16 @@ async def run_cdp_job_search(port: int, query: str, location: Optional[str], sit
 
     # Build Search URL
     q_encoded = urllib.parse.quote(query)
-    loc_encoded = urllib.parse.quote(location or "Remote")
+    loc_encoded = urllib.parse.quote(location or "India")
 
     if site == "linkedin":
-        search_url = f"https://www.linkedin.com/jobs/search/?keywords={q_encoded}&location={loc_encoded}&f_TPR=r86400"
+        search_url = f"https://www.linkedin.com/jobs/search/?keywords={q_encoded}&location={loc_encoded}&f_E=1%2C2&f_TPR=r86400"
+    elif site == "naukri":
+        search_url = f"https://www.naukri.com/{q_encoded.lower().replace('%20', '-')}-jobs-in-{loc_encoded.lower().replace('%20', '-')}?experience=0"
     elif site == "google":
-        search_url = f"https://www.google.com/search?q={q_encoded}+jobs+{loc_encoded}&ibp=htl;jobs"
+        search_url = f"https://www.google.com/search?q={q_encoded}+fresher+jobs+{loc_encoded}&ibp=htl;jobs"
     else:
-        search_url = f"https://www.google.com/search?q=site:boards.greenhouse.io+OR+site:jobs.lever.co+OR+site:jobs.ashbyhq.com+{q_encoded}+{loc_encoded}"
+        search_url = f"https://www.google.com/search?q=site:boards.greenhouse.io+OR+site:jobs.lever.co+OR+site:jobs.ashbyhq.com+{q_encoded}+fresher+{loc_encoded}"
 
     print(f"[*] Navigating CDP Agent to search portal: {search_url}")
     await client.send_command("Page.navigate", {"url": search_url})
@@ -353,9 +355,9 @@ async def run_cdp_job_search(port: int, query: str, location: Optional[str], sit
 def main():
     parser = argparse.ArgumentParser(description="CareerOS Chrome CDP Agent Runner & Job Discovery Crawler")
     parser.add_argument("--url", help="Job application URL to autofill")
-    parser.add_argument("--search", help="Search query to discover jobs via CDP (e.g. 'AI Python Developer')")
-    parser.add_argument("--location", default="Remote", help="Job location filter (default: 'Remote')")
-    parser.add_argument("--site", choices=["linkedin", "google", "ats"], default="linkedin", help="Target search site (default: linkedin)")
+    parser.add_argument("--search", help="Search query to discover jobs via CDP (e.g. 'Python Fresher', 'AI Developer')")
+    parser.add_argument("--location", default="India", help="Job location filter (default: 'India')")
+    parser.add_argument("--site", choices=["linkedin", "naukri", "google", "ats"], default="linkedin", help="Target search site (default: linkedin)")
     parser.add_argument("--port", type=int, default=DEFAULT_CDP_PORT, help=f"Chrome CDP port (default: {DEFAULT_CDP_PORT})")
     parser.add_argument("--api-url", default=DEFAULT_API_URL, help=f"CareerOS API base URL (default: {DEFAULT_API_URL})")
     parser.add_argument("--token", help="CareerOS Bearer auth token")

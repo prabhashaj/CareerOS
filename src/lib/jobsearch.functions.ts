@@ -29,11 +29,43 @@ const ENTRY_LEVEL_PATTERNS = [
   /\btrainee\b/i,
   /\bassociate\b/i,
   /\bapprentice\b/i,
+  /\b0[\s-]?to[\s-]?1[\s-]?years?\b/i,
   /\b0[\s-]?to[\s-]?2[\s-]?years?\b/i,
   /\b0[\s-]?-?[\s-]?2\s?(yrs?|years?)\b/i,
+  /\b0[\s-]?-?[\s-]?1\s?(yrs?|years?)\b/i,
+  /\b0\s*years?(\s*of)?\s*experience\b/i,
+  /\bno\s*experience\s*(required|needed)?\b/i,
   /\bless than (1|2|3) years?\b/i,
+  /\b(2023|2024|2025|2026)\s*(batch|passout|pass[\s-]?out|graduates?)\b/i,
+  /\b(batch\s*of\s*(2023|2024|2025|2026))\b/i,
+  /\bcampus\s*(hiring|recruitment|placement|drive)\b/i,
+  /\bgraduate\s*engineer\s*trainee\b/i,
+  /\bGET\b/,
   /\bL[12]\b/,
 ];
+
+const OVERSEAS_LOCATIONS = [
+  /\b(united states|usa|u\.s\.a?|san francisco|new york|california|texas|seattle|austin|chicago|boston|los angeles|colorado|florida|washington)\b/i,
+  /\b(united kingdom|uk|u\.k\.?|london|manchester|edinburgh|birmingham|ireland|dublin)\b/i,
+  /\b(germany|berlin|munich|frankfurt|france|paris|amsterdam|netherlands|switzerland|zurich|sweden|stockholm|poland|warsaw)\b/i,
+  /\b(canada|toronto|vancouver|montreal|ottawa|australia|sydney|melbourne|singapore|tokyo|japan)\b/i,
+];
+
+const INDIAN_HUBS = [
+  "bengaluru", "bangalore", "hyderabad", "pune", "mumbai", "delhi", "gurgaon",
+  "gurugram", "noida", "chennai", "kolkata", "ahmedabad", "jaipur", "kochi",
+  "coimbatore", "indore", "chandigarh", "india"
+];
+
+function isIndiaJob(j: NormalizedJob): boolean {
+  const loc = (j.location ?? "").toLowerCase();
+  const text = `${j.title} ${j.description}`.toLowerCase();
+  if (OVERSEAS_LOCATIONS.some((re) => re.test(loc))) return false;
+  if (INDIAN_HUBS.some((h) => loc.includes(h) || text.includes(h))) return true;
+  // If it's a known Indian portal, consider it India
+  if (/naukri|instahyre|cutshort|hirist|foundit|freshersworld|internshala|apna/i.test(j.source)) return true;
+  return false;
+}
 
 type NormalizedJob = {
   source: string;
@@ -68,15 +100,19 @@ function tokens(q: string) {
     .filter((t) => t.length >= 2 && !["the", "and", "for", "with", "job", "jobs", "remote", "in", "of", "a", "an"].includes(t));
 }
 
-function scoreJob(j: NormalizedJob, qTokens: string[], loc: string | null, remoteOnly: boolean) {
+function scoreJob(j: NormalizedJob, qTokens: string[], loc: string | null, remoteOnly: boolean, mode: "any" | "entry_level" = "any") {
   const hay = `${j.title} ${j.company} ${j.description}`.toLowerCase();
   let s = 0;
   for (const t of qTokens) {
     if (j.title.toLowerCase().includes(t)) s += 4;
     else if (hay.includes(t)) s += 1;
   }
-  if (loc && (j.location ?? "").toLowerCase().includes(loc.toLowerCase())) s += 5;
-  if (remoteOnly && j.remote) s += 3;
+  if (loc && (j.location ?? "").toLowerCase().includes(loc.toLowerCase())) s += 6;
+  if (isIndiaJob(j)) s += 8;
+  if (isEntryLevel(j)) {
+    s += (mode === "entry_level" || qTokens.includes("fresher")) ? 12 : 3;
+  }
+  if (remoteOnly && j.remote) s += 2;
   return s;
 }
 
@@ -726,14 +762,25 @@ export const searchJobsWeb = createServerFn({ method: "POST" })
       dedupedJobs.push(job);
     }
 
-    // 5. Filter by remote / entry-level mode
+    // 5. Filter by India location & entry-level mode
     let filtered = dedupedJobs;
+    
+    // Strict India filtering if loc is India or user didn't specify an overseas country
+    const wantsIndia = !loc || /india|bengaluru|bangalore|hyderabad|pune|mumbai|delhi|gurgaon|gurugram|noida|chennai|kolkata|ahmedabad|jaipur|kochi|indore/i.test(loc);
+    if (wantsIndia) {
+      filtered = filtered.filter((j) => {
+        // Exclude clear overseas jobs
+        if (OVERSEAS_LOCATIONS.some((re) => re.test(j.location ?? ""))) return false;
+        return true;
+      });
+    }
+
     if (data.remoteOnly) {
       filtered = filtered.filter((j) => j.remote);
     }
-    if (data.mode === "entry_level") {
+    if (data.mode === "entry_level" || /fresher|entry/i.test(q)) {
       const entryLevelOnly = filtered.filter((j) => isEntryLevel(j));
-      if (entryLevelOnly.length >= 5) {
+      if (entryLevelOnly.length >= 3) {
         filtered = entryLevelOnly;
       }
     }
@@ -742,8 +789,8 @@ export const searchJobsWeb = createServerFn({ method: "POST" })
     const qTokens = tokens(q);
     filtered.sort(
       (a, b) =>
-        scoreJob(b, qTokens, loc ?? null, !!data.remoteOnly) -
-        scoreJob(a, qTokens, loc ?? null, !!data.remoteOnly),
+        scoreJob(b, qTokens, loc ?? null, !!data.remoteOnly, data.mode) -
+        scoreJob(a, qTokens, loc ?? null, !!data.remoteOnly, data.mode),
     );
 
     const top = filtered.slice(0, data.limit);

@@ -116,9 +116,9 @@ function JobsPage() {
   const [ingesting, setIngesting] = useState(false);
 
   const [searchQ, setSearchQ] = useState("");
-  const [searchLoc, setSearchLoc] = useState("");
+  const [searchLoc, setSearchLoc] = useState("India");
   const [remoteOnly, setRemoteOnly] = useState(false);
-  const [searchMode, setSearchMode] = useState<"any" | "entry_level">("any");
+  const [searchMode, setSearchMode] = useState<"any" | "entry_level">("entry_level");
   const [searching, setSearching] = useState(false);
   const [cdpDialogOpen, setCdpDialogOpen] = useState(false);
   const [copiedCmd, setCopiedCmd] = useState(false);
@@ -444,19 +444,19 @@ function JobsPage() {
           <div className="inline-flex rounded-lg border border-border bg-background p-0.5 text-xs">
             <button
               type="button"
-              onClick={() => setSearchMode("any")}
+              onClick={() => setSearchMode("entry_level")}
               disabled={searching}
-              className={`inline-flex items-center gap-1 rounded-md px-3 py-1.5 transition ${searchMode === "any" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
+              className={`inline-flex items-center gap-1 rounded-md px-3 py-1.5 transition ${searchMode === "entry_level" ? "bg-primary text-primary-foreground font-medium" : "text-muted-foreground hover:text-foreground"}`}
             >
-              <Globe className="h-3 w-3" /> All roles
+              <Sprout className="h-3 w-3" /> 🇮🇳 Fresher Jobs (0-2 Yrs)
             </button>
             <button
               type="button"
-              onClick={() => setSearchMode("entry_level")}
+              onClick={() => setSearchMode("any")}
               disabled={searching}
-              className={`inline-flex items-center gap-1 rounded-md px-3 py-1.5 transition ${searchMode === "entry_level" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
+              className={`inline-flex items-center gap-1 rounded-md px-3 py-1.5 transition ${searchMode === "any" ? "bg-primary text-primary-foreground font-medium" : "text-muted-foreground hover:text-foreground"}`}
             >
-              <Sprout className="h-3 w-3" /> Entry-level
+              <Globe className="h-3 w-3" /> All roles
             </button>
             <button
               type="button"
@@ -469,30 +469,50 @@ function JobsPage() {
         </div>
         <div className="grid gap-2 sm:grid-cols-[1fr_1fr_auto]">
           <Input
-            placeholder="Role or keywords (defaults to your target roles)"
+            placeholder="Role or keywords (e.g. Python Fresher, Full Stack)"
             value={searchQ}
             onChange={(e) => setSearchQ(e.target.value)}
             disabled={searching}
           />
           <Input
-            placeholder="Location (optional)"
+            placeholder="Location (e.g. India, Bengaluru, Hyderabad)"
             value={searchLoc}
             onChange={(e) => setSearchLoc(e.target.value)}
             disabled={searching}
           />
           <Button onClick={handleWebSearch} disabled={searching}>
             {searching ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
-            {searching ? "Searching…" : "Search the web"}
+            {searching ? "Searching…" : "Search jobs"}
           </Button>
         </div>
-        <label className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
+
+        {/* Quick Indian Tech Hub Chips */}
+        <div className="mt-3 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+          <span className="font-medium text-foreground mr-1">India Hubs:</span>
+          {["India", "Bengaluru", "Hyderabad", "Pune", "Delhi / NCR", "Mumbai", "Chennai", "Noida", "Gurgaon"].map((c) => (
+            <button
+              key={c}
+              type="button"
+              onClick={() => setSearchLoc(c)}
+              className={`rounded-md px-2 py-0.5 transition border ${
+                searchLoc.toLowerCase() === c.toLowerCase()
+                  ? "border-primary/50 bg-primary/10 text-primary font-medium"
+                  : "border-border bg-background/50 hover:bg-secondary text-muted-foreground"
+              }`}
+            >
+              {c}
+            </button>
+          ))}
+        </div>
+
+        <label className="mt-2.5 flex items-center gap-2 text-xs text-muted-foreground">
           <input
             type="checkbox"
             checked={remoteOnly}
             onChange={(e) => setRemoteOnly(e.target.checked)}
             disabled={searching}
           />
-          Remote only
+          Remote within India only
         </label>
         {searching && <SearchingOverlay query={searchQ} location={searchLoc} />}
       </div>
