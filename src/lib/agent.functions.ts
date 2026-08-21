@@ -1,14 +1,76 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
-import {
-  AGENT_RULES,
-  PARSE_TOOL_PARAMS,
-  RESUME_TOOL_PARAMS,
-  callAiJson,
-} from "@/lib/agent.server";
-
+import { AGENT_RULES } from "@/lib/agent.server";
 import { retrieveCandidateContext } from "@/lib/candidate-context.server";
+
+const ResumeSchema = z.object({
+  contact: z.object({
+    name: z.string().default(""),
+    title: z.string().default(""),
+    email: z.string().default(""),
+    phone: z.string().default(""),
+    location: z.string().default(""),
+    website: z.string().default(""),
+    linkedin: z.string().default(""),
+    github: z.string().default(""),
+  }).default({
+    name: "",
+    title: "",
+    email: "",
+    phone: "",
+    location: "",
+    website: "",
+    linkedin: "",
+    github: "",
+  }),
+  summary: z.string().default(""),
+  experience: z.array(
+    z.object({
+      company: z.string().default(""),
+      role: z.string().default(""),
+      location: z.string().default(""),
+      start: z.string().default(""),
+      end: z.string().default(""),
+      bullets: z.array(z.string()).default([]),
+      pageBreakBefore: z.boolean().optional(),
+    })
+  ).default([]),
+  education: z.array(
+    z.object({
+      school: z.string().default(""),
+      degree: z.string().default(""),
+      start: z.string().default(""),
+      end: z.string().default(""),
+      details: z.string().default(""),
+      pageBreakBefore: z.boolean().optional(),
+    })
+  ).default([]),
+  skills: z.array(
+    z.object({
+      category: z.string().default(""),
+      items: z.array(z.string()).default([]),
+      pageBreakBefore: z.boolean().optional(),
+    })
+  ).default([]),
+  projects: z.array(
+    z.object({
+      name: z.string().default(""),
+      link: z.string().default(""),
+      description: z.string().default(""),
+      bullets: z.array(z.string()).default([]),
+      pageBreakBefore: z.boolean().optional(),
+    })
+  ).default([]),
+  certifications: z.array(
+    z.object({
+      name: z.string().default(""),
+      issuer: z.string().default(""),
+      year: z.string().default(""),
+      pageBreakBefore: z.boolean().optional(),
+    })
+  ).default([]),
+});
 
 export const tailorResume = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
@@ -26,6 +88,8 @@ export const tailorResume = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
+    const { generateObject } = await import("ai");
+    const { getGateway } = await import("@/lib/ai-gateway.server");
 
     // Load rich Knowledge Hub + uploaded resumes + profile context
     const knowledgeHubContext = await retrieveCandidateContext(
@@ -43,96 +107,71 @@ export const tailorResume = createServerFn({ method: "POST" })
       ? "The user opted into company context: you may lightly adapt tone to what is broadly known about the company, but never state unverified facts about it in the resume."
       : "Do not add company-specific claims.";
 
-    const result = await callAiJson<{
-      resume: unknown;
-      reply: string;
-      changelog: string[];
-      questions: string[];
-    }>(
-      [
-        {
-          role: "system",
-          content: `${AGENT_RULES}\n${research}\n\nKNOWLEDGE HUB & VERIFIED CANDIDATE PROFILE:\nUse facts, verified metrics, achievements, skills, and projects strictly from the Candidate Profile and Knowledge Hub below. Do not fabricate unverifiable experience.\n${knowledgeHubContext}`,
-        },
-        {
-          role: "user",
-          content: `${jobBlock}\n\nCURRENT RESUME JSON\n${JSON.stringify(data.resume)}\n\nUSER REQUEST\n${data.instruction}\n\nReturn the complete updated resume JSON (all sections, even unchanged ones), a short reply, a changelog, and any clarifying questions.`,
-        },
-      ],
-      {
-        name: "return_tailored_resume",
-        description: "Return the updated resume, a reply, a changelog and clarifying questions.",
-        parameters: RESUME_TOOL_PARAMS as unknown as Record<string, unknown>,
-      },
-    );
+    const TailorResultSchema = z.object({
+      resume: ResumeSchema,
+      reply: z.string().default("Resume tailored successfully."),
+      changelog: z.array(z.string()).default([]),
+      questions: z.array(z.string()).default([]),
+    });
+
+    const gateway = getGateway();
+    const { object: output } = await generateObject({
+      model: gateway("google/gemini-2.5-pro"),
+      schema: TailorResultSchema,
+      system: `${AGENT_RULES}\n${research}\n\nKNOWLEDGE HUB & VERIFIED CANDIDATE PROFILE:\nUse facts, verified metrics, achievements, skills, and projects strictly from the Candidate Profile and Knowledge Hub below. Do not fabricate unverifiable experience.\n${knowledgeHubContext}`,
+      prompt: `${jobBlock}\n\nCURRENT RESUME JSON\n${JSON.stringify(data.resume)}\n\nUSER REQUEST\n${data.instruction}\n\nReturn the complete updated resume JSON (all sections, even unchanged ones), a short reply, a changelog, and any clarifying questions.`,
+    });
 
     return {
-      resumeJson: JSON.stringify(result.resume ?? {}),
-      reply: String(result.reply ?? ""),
-      changelog: (result.changelog ?? []).map(String),
-      questions: (result.questions ?? []).map(String),
+      resumeJson: JSON.stringify(output.resume ?? {}),
+      reply: output.reply,
+      changelog: output.changelog,
+      questions: output.questions,
     };
   });
 
 export const parseResumeText = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((input: unknown) => z.object({ text: z.string().min(20) }).parse(input))
+  .inputValidator((input: unknown) => z.object({ text: z.string().min(10) }).parse(input))
   .handler(async ({ data }) => {
-    const parsed = await callAiJson<unknown>(
-      [
-        {
-          role: "system",
-          content:
-            "Extract a structured resume from raw text. Support full multi-page resumes (1 to 4+ pages). Preserve ALL past roles, projects, skills, education, and certifications. Use only information present in the text — leave fields empty rather than guessing.",
-        },
-        { role: "user", content: data.text.slice(0, 150000) },
-      ],
-      {
-        name: "return_resume",
-        description: "Return the extracted resume JSON.",
-        parameters: PARSE_TOOL_PARAMS as unknown as Record<string, unknown>,
-      },
-    );
+    const { generateObject } = await import("ai");
+    const { getGateway } = await import("@/lib/ai-gateway.server");
 
-    const parsedObj = parsed as Record<string, unknown> | null;
-    const finalResume = parsedObj?.["resume"] ?? parsedObj;
-    return { resumeJson: JSON.stringify(finalResume ?? {}) };
+    const gateway = getGateway();
+    const { object: parsedResume } = await generateObject({
+      model: gateway("google/gemini-2.5-flash"),
+      schema: ResumeSchema,
+      system:
+        "Extract a structured resume from raw text. Support full multi-page resumes (1 to 4+ pages). Preserve ALL past roles, projects, skills, education, and certifications. Use only information present in the text — leave fields empty rather than guessing.",
+      prompt: `RAW RESUME TEXT:\n${data.text.slice(0, 150000)}`,
+    });
+
+    return { resumeJson: JSON.stringify(parsedResume ?? {}) };
   });
 
 export const parseJobDescription = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((input: unknown) => z.object({ text: z.string().min(20) }).parse(input))
+  .inputValidator((input: unknown) => z.object({ text: z.string().min(10) }).parse(input))
   .handler(async ({ data }) => {
-    return await callAiJson<{
-      title: string;
-      company: string;
-      location: string;
-      remote_type: string;
-      seniority: string;
-      keywords: string[];
-    }>(
-      [
-        {
-          role: "system",
-          content: "Extract structured facts from a job description. Leave unknown fields empty.",
-        },
-        { role: "user", content: data.text.slice(0, 12000) },
-      ],
-      {
-        name: "return_job_facts",
-        description: "Return the parsed job description facts.",
-        parameters: {
-          type: "object",
-          properties: {
-            title: { type: "string" },
-            company: { type: "string" },
-            location: { type: "string" },
-            remote_type: { type: "string" },
-            seniority: { type: "string" },
-            keywords: { type: "array", items: { type: "string" } },
-          },
-          required: ["title", "company", "location", "remote_type", "seniority", "keywords"],
-        },
-      },
-    );
+    const { generateObject } = await import("ai");
+    const { getGateway } = await import("@/lib/ai-gateway.server");
+
+    const JobSchema = z.object({
+      title: z.string().default("Target Role"),
+      company: z.string().default("Target Company"),
+      location: z.string().default("Remote"),
+      remote_type: z.string().default("Remote"),
+      seniority: z.string().default("Mid"),
+      keywords: z.array(z.string()).default([]),
+    });
+
+    const gateway = getGateway();
+    const { object: parsedJob } = await generateObject({
+      model: gateway("google/gemini-2.5-flash"),
+      schema: JobSchema,
+      system: "Extract job title, company name, location, remote type, seniority, and keywords from the text.",
+      prompt: data.text.slice(0, 50000),
+    });
+
+    return parsedJob;
   });
