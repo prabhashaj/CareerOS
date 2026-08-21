@@ -11,8 +11,7 @@ import {
   FileCode,
 } from "lucide-react";
 import { toast } from "sonner";
-import { extractTextFromFile } from "@/lib/extract-text";
-import { parseResumeText } from "@/lib/agent.functions";
+import { parseResumeFile, parseResumeText } from "@/lib/agent.functions";
 import { normalizeResume, type ResumeContent } from "@/lib/resume";
 import { supabase } from "@/integrations/supabase/client";
 import type { Json } from "@/integrations/supabase/types";
@@ -38,7 +37,8 @@ type Props = {
 export function UploadResumeModal({ open, onOpenChange, onLoaded }: Props) {
   const { user } = useAuth();
   const qc = useQueryClient();
-  const parseFn = useServerFn(parseResumeText);
+  const parseFileFn = useServerFn(parseResumeFile);
+  const parseTextFn = useServerFn(parseResumeText);
 
   const [uploadMethod, setUploadMethod] = useState<"file" | "paste">("file");
   const [file, setFile] = useState<File | null>(null);
@@ -60,21 +60,52 @@ export function UploadResumeModal({ open, onOpenChange, onLoaded }: Props) {
     onOpenChange(isOpen);
   };
 
-  // Parse uploaded resume with Mistral AI and save to library only (no direct tailoring)
-  const parseAndSaveMut = useMutation({
-    mutationFn: async (text: string) => {
+  // Helper to extract clean error message
+  const getErrorMessage = (err: unknown): string => {
+    if (err instanceof Error) return err.message;
+    if (typeof err === "object" && err !== null) {
+      const e = err as Record<string, unknown>;
+      if (typeof e["message"] === "string") return e["message"];
+      if (typeof e["error"] === "string") return e["error"];
+    }
+    return String(err || "Failed to process document");
+  };
+
+  // 1. Process and save uploaded file
+  const processFileMut = useMutation({
+    mutationFn: async (selectedFile: File) => {
       if (!user) throw new Error("Please sign in first");
       setIsProcessing(true);
-      setProcessingStatus("AI is reading and structuring your resume facts...");
+      setProcessingStatus(`Reading document: ${selectedFile.name}...`);
 
-      const res = await parseFn({ data: { text } });
+      // Read file to base64
+      const base64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const res = reader.result as string;
+          const commaIdx = res.indexOf(",");
+          resolve(commaIdx !== -1 ? res.slice(commaIdx + 1) : res);
+        };
+        reader.onerror = (e) => reject(e);
+        reader.readAsDataURL(selectedFile);
+      });
+
+      setProcessingStatus("AI is structuring your resume facts & experience...");
+      const res = await parseFileFn({
+        data: {
+          base64,
+          filename: selectedFile.name,
+          mimeType: selectedFile.type,
+        },
+      });
+
       const parsed = JSON.parse(res.resumeJson);
       const normalized = normalizeResume(parsed);
 
       setProcessingStatus("Saving base resume to your documents library...");
       const resumeTitle = normalized.contact.name
         ? `${normalized.contact.name}'s Resume`
-        : file?.name?.replace(/\.[^/.]+$/, "") || "Imported Resume";
+        : selectedFile.name.replace(/\.[^/.]+$/, "") || "Imported Resume";
 
       const { data: savedResume, error: saveErr } = await supabase
         .from("resumes")
@@ -89,7 +120,71 @@ export function UploadResumeModal({ open, onOpenChange, onLoaded }: Props) {
 
       if (saveErr) throw saveErr;
 
-      // Also store raw text in Knowledge Hub documents
+      // Index extracted text into Knowledge Hub documents
+      try {
+        await supabase.from("documents").insert({
+          user_id: user.id,
+          title: resumeTitle,
+          kind: "resume",
+          extracted_text: res.extractedText,
+          is_primary: true,
+        });
+      } catch (e) {
+        console.warn("Knowledge Hub indexing note:", e);
+      }
+
+      return {
+        resumeId: savedResume.id,
+        resumeContent: normalized,
+        resumeTitle,
+      };
+    },
+    onSuccess: async ({ resumeId, resumeContent, resumeTitle }) => {
+      await qc.invalidateQueries({ queryKey: ["resumes"] });
+      await qc.invalidateQueries({ queryKey: ["documents"] });
+      toast.success("Document uploaded & structured successfully!");
+      handleClose(false);
+
+      if (onLoaded) {
+        onLoaded(resumeContent, resumeId, resumeTitle);
+      }
+    },
+    onError: (err: unknown) => {
+      setIsProcessing(false);
+      toast.error(getErrorMessage(err));
+    },
+  });
+
+  // 2. Process and save pasted raw text
+  const processTextMut = useMutation({
+    mutationFn: async (text: string) => {
+      if (!user) throw new Error("Please sign in first");
+      setIsProcessing(true);
+      setProcessingStatus("AI is structuring your pasted resume facts...");
+
+      const res = await parseTextFn({ data: { text } });
+      const parsed = JSON.parse(res.resumeJson);
+      const normalized = normalizeResume(parsed);
+
+      setProcessingStatus("Saving base resume to your library...");
+      const resumeTitle = normalized.contact.name
+        ? `${normalized.contact.name}'s Resume`
+        : "Pasted Resume";
+
+      const { data: savedResume, error: saveErr } = await supabase
+        .from("resumes")
+        .insert({
+          user_id: user.id,
+          title: resumeTitle,
+          content: normalized as unknown as Json,
+          template_id: "minimal",
+        })
+        .select("id")
+        .single();
+
+      if (saveErr) throw saveErr;
+
+      // Index into Knowledge Hub documents
       try {
         await supabase.from("documents").insert({
           user_id: user.id,
@@ -111,7 +206,7 @@ export function UploadResumeModal({ open, onOpenChange, onLoaded }: Props) {
     onSuccess: async ({ resumeId, resumeContent, resumeTitle }) => {
       await qc.invalidateQueries({ queryKey: ["resumes"] });
       await qc.invalidateQueries({ queryKey: ["documents"] });
-      toast.success("Document uploaded & saved as base resume!");
+      toast.success("Resume text structured & saved to your library!");
       handleClose(false);
 
       if (onLoaded) {
@@ -120,46 +215,33 @@ export function UploadResumeModal({ open, onOpenChange, onLoaded }: Props) {
     },
     onError: (err: unknown) => {
       setIsProcessing(false);
-      const msg = err instanceof Error ? err.message : "Failed to parse document";
-      toast.error(msg);
+      toast.error(getErrorMessage(err));
     },
   });
 
   const handleFileDrop = async (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     const droppedFile = e.dataTransfer.files[0];
-    if (droppedFile) void processSelectedFile(droppedFile);
+    if (droppedFile) {
+      setFile(droppedFile);
+      processFileMut.mutate(droppedFile);
+    }
   };
 
   const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0];
-    if (selectedFile) void processSelectedFile(selectedFile);
-  };
-
-  const processSelectedFile = async (selectedFile: File) => {
-    setFile(selectedFile);
-    setIsProcessing(true);
-    setProcessingStatus(`Reading file: ${selectedFile.name}...`);
-
-    try {
-      const text = await extractTextFromFile(selectedFile);
-      if (!text || text.trim().length < 20) {
-        throw new Error("Could not extract sufficient text from this file. Please try another file or paste text directly.");
-      }
-      parseAndSaveMut.mutate(text);
-    } catch (err: unknown) {
-      setIsProcessing(false);
-      const msg = err instanceof Error ? err.message : "Failed to extract text from file";
-      toast.error(msg);
+    if (selectedFile) {
+      setFile(selectedFile);
+      processFileMut.mutate(selectedFile);
     }
   };
 
   const handlePasteSubmit = () => {
-    if (!rawText.trim() || rawText.trim().length < 20) {
-      toast.error("Please paste at least 20 characters of resume text.");
+    if (!rawText.trim() || rawText.trim().length < 10) {
+      toast.error("Please paste at least 10 characters of resume text.");
       return;
     }
-    parseAndSaveMut.mutate(rawText.trim());
+    processTextMut.mutate(rawText.trim());
   };
 
   return (
@@ -210,7 +292,7 @@ export function UploadResumeModal({ open, onOpenChange, onLoaded }: Props) {
                 <input
                   ref={fileInputRef}
                   type="file"
-                  accept=".pdf,.docx,.txt"
+                  accept=".pdf,.docx,.txt,.doc"
                   onChange={handleFileInputChange}
                   className="hidden"
                 />
@@ -242,7 +324,7 @@ export function UploadResumeModal({ open, onOpenChange, onLoaded }: Props) {
                 />
                 <Button
                   onClick={handlePasteSubmit}
-                  disabled={rawText.trim().length < 20}
+                  disabled={rawText.trim().length < 10}
                   className="w-full font-bold text-xs h-9 rounded-xl shadow-xs"
                 >
                   <Sparkles className="size-3.5 mr-1.5" /> Parse and Save Base Resume

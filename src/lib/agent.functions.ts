@@ -149,6 +149,44 @@ export const parseResumeText = createServerFn({ method: "POST" })
     return { resumeJson: JSON.stringify(parsedResume ?? {}) };
   });
 
+export const parseResumeFile = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) =>
+    z
+      .object({
+        base64: z.string().min(10),
+        filename: z.string().min(1),
+        mimeType: z.string().optional(),
+      })
+      .parse(input),
+  )
+  .handler(async ({ data }) => {
+    const { extractTextFromFile } = await import("@/lib/pdf-extraction.server");
+    const { generateObject } = await import("ai");
+    const { getGateway } = await import("@/lib/ai-gateway.server");
+
+    const buffer = Buffer.from(data.base64, "base64");
+    const text = await extractTextFromFile(buffer, data.mimeType, data.filename);
+
+    if (!text || text.trim().length < 10) {
+      throw new Error("No readable text could be extracted from this document file.");
+    }
+
+    const gateway = getGateway();
+    const { object: parsedResume } = await generateObject({
+      model: gateway("google/gemini-2.5-flash"),
+      schema: ResumeSchema,
+      system:
+        "Extract a structured resume from raw text. Support full multi-page resumes (1 to 4+ pages). Preserve ALL past roles, projects, skills, education, and certifications. Use only information present in the text — leave fields empty rather than guessing.",
+      prompt: `DOCUMENT FILE (${data.filename}) TEXT:\n${text.slice(0, 150000)}`,
+    });
+
+    return {
+      extractedText: text,
+      resumeJson: JSON.stringify(parsedResume ?? {}),
+    };
+  });
+
 export const parseJobDescription = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: unknown) => z.object({ text: z.string().min(10) }).parse(input))
