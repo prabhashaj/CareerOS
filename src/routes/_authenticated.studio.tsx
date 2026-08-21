@@ -31,6 +31,8 @@ import {
   Briefcase,
   CheckCircle2,
   Zap,
+  ArrowRight,
+  Plus,
 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
@@ -62,13 +64,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-  SheetTrigger,
-} from "@/components/ui/sheet";
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   Select,
   SelectContent,
@@ -105,7 +106,12 @@ function StudioPage() {
   const tailorFn = useServerFn(tailorResume);
   const atsAnalyzeFn = useServerFn(analyzeATSKeywords);
   const listJobsFn = useServerFn(listJobs);
+  const getJobFn = useServerFn(getJob);
 
+  // Flow State: If neither resumeId nor jobId is provided, show the initial setup wizard
+  const [isSetupComplete, setIsSetupComplete] = useState<boolean>(!!resumeId || !!jobId);
+
+  // Resume Content & Editor State
   const [content, setContent] = useState<ResumeContent>(starterResume());
   const [template, setTemplate] = useState<TemplateId>("minimal");
   const [density, setDensity] = useState<"compact" | "normal" | "relaxed">("normal");
@@ -122,21 +128,17 @@ function StudioPage() {
   const [showPageBreaks, setShowPageBreaks] = useState(true);
   const [isExportingPdf, setIsExportingPdf] = useState(false);
 
-  // Target Job & ATS Drawer State
-  const [targetJobDrawerOpen, setTargetJobDrawerOpen] = useState(false);
+  // Target Job & Tailoring State
+  const [selectedBaseResumeId, setSelectedBaseResumeId] = useState<string>(resumeId ?? "starter");
   const [activeJobId, setActiveJobId] = useState<string>(jobId ?? "");
   const [targetTitle, setTargetTitle] = useState("");
   const [targetCompany, setTargetCompany] = useState("");
   const [targetDescription, setTargetDescription] = useState("");
+  const [customInstructions, setCustomInstructions] = useState("");
   const [isTailoring, setIsTailoring] = useState(false);
-  const [isAnalyzingAts, setIsAnalyzingAts] = useState(false);
-  const [atsAnalysis, setAtsAnalysis] = useState<{
-    score: number;
-    matched_keywords: string[];
-    missing_keywords: string[];
-    suggestions: string[];
-  } | null>(null);
+  const [reTailorModalOpen, setReTailorModalOpen] = useState(false);
 
+  // Spacing
   const activePreset = SPACING_PRESETS[density] || SPACING_PRESETS.normal;
   const currentSpacing: {
     sectionGap: number;
@@ -187,32 +189,45 @@ function StudioPage() {
     }
   };
 
-  // Load saved jobs
+  // Queries
   const { data: savedJobs = [] } = useQuery({
     queryKey: ["saved-jobs", user?.id],
     enabled: !!user,
     queryFn: () => listJobsFn(),
   });
 
-  // Load job description for context if activeJobId is set
-  const { data: jobRow } = useQuery({
-    queryKey: ["job", activeJobId],
-    enabled: !!activeJobId && activeJobId !== "custom",
+  const { data: userResumes = [] } = useQuery({
+    queryKey: ["resumes", user?.id],
+    enabled: !!user,
     queryFn: async () => {
-      const { data } = await supabase.from("jobs").select("*").eq("id", activeJobId).maybeSingle();
-      return data;
+      const { data } = await supabase
+        .from("resumes")
+        .select("*")
+        .eq("user_id", user!.id)
+        .order("updated_at", { ascending: false });
+      return data ?? [];
     },
   });
 
+  // Load selected job details if activeJobId is set
   useEffect(() => {
-    if (jobRow) {
-      setTargetTitle(jobRow.title);
-      setTargetCompany(jobRow.company);
-      setTargetDescription(jobRow.description || "");
+    if (activeJobId && activeJobId !== "custom") {
+      void (async () => {
+        try {
+          const j = await getJobFn({ data: { id: activeJobId } });
+          if (j) {
+            setTargetTitle(j.title);
+            setTargetCompany(j.company);
+            setTargetDescription(j.description || "");
+          }
+        } catch {
+          // ignore
+        }
+      })();
     }
-  }, [jobRow]);
+  }, [activeJobId, getJobFn]);
 
-  // Load resume from DB
+  // Load resume from DB if resumeId is set
   const { data: resumeRow } = useQuery({
     queryKey: ["resume", resumeId],
     enabled: !!resumeId,
@@ -255,6 +270,7 @@ function StudioPage() {
       setContent(normalizeResume(resumeRow.content));
       setTemplate((resumeRow.template_id as TemplateId) ?? "minimal");
       setCurrentResumeId(resumeRow.id);
+      setIsSetupComplete(true);
     }
   }, [resumeRow]);
 
@@ -290,6 +306,7 @@ function StudioPage() {
           if (data) setCurrentResumeId(data.id);
         }
         await qc.invalidateQueries({ queryKey: ["versions", currentResumeId] });
+        await qc.invalidateQueries({ queryKey: ["resumes"] });
         toast.success("Saved");
       } catch {
         toast.error("Save failed");
@@ -347,7 +364,7 @@ function StudioPage() {
     [activeJobId, content, currentResumeId, qc, template, user, versions],
   );
 
-  // Revert to any specific checkpoint
+  // Revert to checkpoint
   const handleRevertToCheckpoint = useCallback(
     (checkpoint: CheckpointItem) => {
       const restored = normalizeResume(checkpoint.content);
@@ -454,24 +471,21 @@ function StudioPage() {
     updateStudioSession(currentSessionData);
   }, [currentSessionData, updateStudioSession]);
 
-  // 1-Click Tailor to Job Description Handler
-  const handleTailorToJD = async () => {
-    if (!targetDescription.trim() && !targetTitle.trim()) {
-      toast.error("Please enter a job title or paste the job description first.");
-      setTargetJobDrawerOpen(true);
-      return;
-    }
-
+  // Execute AI Tailoring with JD + Knowledge Hub
+  const handleExecuteTailoring = async (baseContentToUse = content) => {
     setIsTailoring(true);
-    const toastId = toast.loading("Analyzing JD & tailoring resume for maximum ATS alignment...");
+    const toastId = toast.loading("Analyzing JD & tailoring resume with verified Knowledge Hub proof points...");
     try {
-      // Auto-save safety checkpoint
-      await createCheckpoint(`Before Tailoring for ${targetCompany || targetTitle || "Target Role"}`, content, "agent");
+      await createCheckpoint(`Before Tailoring for ${targetCompany || targetTitle || "Target Role"}`, baseContentToUse, "agent");
+
+      const instruction = customInstructions.trim()
+        ? `Tailor this resume specifically for ${targetTitle} at ${targetCompany}. Instructions: ${customInstructions}`
+        : `Tailor this resume specifically for the position of ${targetTitle} at ${targetCompany}. Optimize summary, strengthen bullet points with strong action verbs & verified metrics, align technical skills, and maximize ATS score.`;
 
       const res = await tailorFn({
         data: {
-          resume: content,
-          instruction: `Tailor this resume specifically for the position of ${targetTitle} at ${targetCompany}. Optimize summary, strengthen bullet points with strong action verbs & metrics, align verified skills, and maximize ATS score.`,
+          resume: baseContentToUse,
+          instruction,
           jobTitle: targetTitle,
           company: targetCompany,
           jobDescription: targetDescription,
@@ -484,10 +498,9 @@ function StudioPage() {
       setContent(normalized);
       void saveResume(normalized);
 
-      // Trigger instant ATS keyword analysis
-      void handleRunAtsAnalysis(normalized);
-
-      toast.success("Resume tailored successfully! Checkpoint saved.", { id: toastId });
+      setIsSetupComplete(true);
+      setReTailorModalOpen(false);
+      toast.success("Tailored resume generated successfully!", { id: toastId });
     } catch (e) {
       console.error(e);
       toast.error(e instanceof Error ? e.message : "Tailoring failed", { id: toastId });
@@ -496,23 +509,29 @@ function StudioPage() {
     }
   };
 
-  // Run ATS keyword & gap analysis
-  const handleRunAtsAnalysis = async (resumeToTest = content) => {
-    if (!targetDescription.trim()) return;
-    setIsAnalyzingAts(true);
-    try {
-      const resumeText = JSON.stringify(resumeToTest);
-      const result = await atsAnalyzeFn({
-        data: {
-          job_description: targetDescription,
-          resume_text: resumeText,
-        },
-      });
-      setAtsAnalysis(result);
-    } catch (e) {
-      console.error("ATS analysis error", e);
-    } finally {
-      setIsAnalyzingAts(false);
+  // Start from Setup Wizard
+  const handleStartSetup = async (withAiTailoring: boolean) => {
+    let baseResumeContent = starterResume();
+
+    if (selectedBaseResumeId && selectedBaseResumeId !== "starter") {
+      const match = userResumes.find((r) => r.id === selectedBaseResumeId);
+      if (match) {
+        baseResumeContent = normalizeResume(match.content);
+        setCurrentResumeId(match.id);
+      }
+    }
+
+    setContent(baseResumeContent);
+
+    if (withAiTailoring) {
+      if (!targetTitle.trim() && !targetDescription.trim()) {
+        toast.error("Please enter a job title or paste the job description to tailor.");
+        return;
+      }
+      await handleExecuteTailoring(baseResumeContent);
+    } else {
+      setIsSetupComplete(true);
+      toast.success("Resume loaded in Studio editor");
     }
   };
 
@@ -529,9 +548,204 @@ function StudioPage() {
     }
   };
 
+  // ── INITIAL SETUP WIZARD (When user opens Studio directly) ──
+  if (!isSetupComplete) {
+    return (
+      <div className="min-h-full flex items-center justify-center p-6 bg-background">
+        <div className="w-full max-w-2xl space-y-6 rounded-3xl border border-border bg-card p-8 shadow-lift animate-fade-in">
+          <div className="space-y-1.5 border-b border-border/70 pb-4">
+            <div className="inline-flex items-center gap-2 rounded-full border border-border bg-secondary/50 px-3 py-1 text-xs text-muted-foreground">
+              <Sparkles className="size-3.5 text-primary" /> Resume Studio Setup
+            </div>
+            <h1 className="font-display text-2xl sm:text-3xl font-bold tracking-tight text-foreground">
+              Select Resume & Target Job Description
+            </h1>
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              Choose your base resume and attach the job description you're applying for to tailor bullet points and ATS keywords.
+            </p>
+          </div>
+
+          <div className="space-y-5">
+            {/* Step 1: Base Resume */}
+            <div className="space-y-2">
+              <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                1. Select Base Resume
+              </Label>
+              <div className="flex gap-2">
+                <Select
+                  value={selectedBaseResumeId}
+                  onValueChange={(val) => setSelectedBaseResumeId(val)}
+                >
+                  <SelectTrigger className="h-10 text-xs rounded-xl bg-secondary/30 font-medium">
+                    <SelectValue placeholder="Choose a base resume..." />
+                  </SelectTrigger>
+                  <SelectContent className="rounded-xl">
+                    <SelectItem value="starter" className="text-xs cursor-pointer">
+                      Use Default Master Profile Resume
+                    </SelectItem>
+                    {userResumes.map((r) => (
+                      <SelectItem key={r.id} value={r.id} className="text-xs cursor-pointer">
+                        {r.title || "Untitled Resume"} (Template: {r.template_id} • v{r.version})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setUploadModalOpen(true)}
+                  className="h-10 text-xs font-semibold rounded-xl gap-1.5 shrink-0"
+                >
+                  <Upload className="size-3.5" /> Upload File
+                </Button>
+              </div>
+            </div>
+
+            {/* Step 2: Target Job Description */}
+            <div className="space-y-3">
+              <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                2. Target Role & Job Description
+              </Label>
+
+              {savedJobs.length > 0 && (
+                <Select
+                  value={activeJobId}
+                  onValueChange={(val) => setActiveJobId(val)}
+                >
+                  <SelectTrigger className="h-9 text-xs rounded-xl bg-secondary/30">
+                    <SelectValue placeholder="Select from saved target roles..." />
+                  </SelectTrigger>
+                  <SelectContent className="rounded-xl">
+                    <SelectItem value="custom" className="text-xs cursor-pointer">
+                      + Custom / Paste new job description
+                    </SelectItem>
+                    {savedJobs.map((j) => (
+                      <SelectItem key={j.id} value={j.id} className="text-xs cursor-pointer">
+                        {j.title} at {j.company}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <Label htmlFor="setup-title" className="text-[11px] font-semibold text-muted-foreground">
+                    Job Title
+                  </Label>
+                  <Input
+                    id="setup-title"
+                    placeholder="e.g. Staff Backend Engineer"
+                    value={targetTitle}
+                    onChange={(e) => setTargetTitle(e.target.value)}
+                    className="h-9 text-xs rounded-xl"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="setup-comp" className="text-[11px] font-semibold text-muted-foreground">
+                    Company Name
+                  </Label>
+                  <Input
+                    id="setup-comp"
+                    placeholder="e.g. Stripe, OpenAI"
+                    value={targetCompany}
+                    onChange={(e) => setTargetCompany(e.target.value)}
+                    className="h-9 text-xs rounded-xl"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <Label htmlFor="setup-desc" className="text-[11px] font-semibold text-muted-foreground">
+                  Job Description Requirements
+                </Label>
+                <Textarea
+                  id="setup-desc"
+                  rows={4}
+                  placeholder="Paste the full job posting requirements to align keywords and bullet points..."
+                  value={targetDescription}
+                  onChange={(e) => setTargetDescription(e.target.value)}
+                  className="text-xs resize-none rounded-xl leading-relaxed bg-secondary/30"
+                />
+              </div>
+            </div>
+
+            {/* Step 3: Custom Focus */}
+            <div className="space-y-1">
+              <Label htmlFor="setup-inst" className="text-[11px] font-semibold text-muted-foreground">
+                Custom Tailoring Focus (Optional)
+              </Label>
+              <Input
+                id="setup-inst"
+                placeholder="e.g. Emphasize distributed systems scale and latency reductions"
+                value={customInstructions}
+                onChange={(e) => setCustomInstructions(e.target.value)}
+                className="h-9 text-xs rounded-xl"
+              />
+            </div>
+          </div>
+
+          {/* Action Footer */}
+          <div className="pt-4 border-t border-border/70 flex flex-col sm:flex-row items-center justify-between gap-3">
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => void handleStartSetup(false)}
+              className="text-xs text-muted-foreground hover:text-foreground order-2 sm:order-1"
+            >
+              Skip & Open in Editor Directly
+            </Button>
+
+            <Button
+              type="button"
+              onClick={() => void handleStartSetup(true)}
+              disabled={isTailoring}
+              className="w-full sm:w-auto h-10 font-bold text-xs gap-2 rounded-xl shadow-md order-1 sm:order-2"
+            >
+              {isTailoring ? (
+                <>
+                  <Loader2 className="size-4 animate-spin" /> Tailoring with Knowledge Hub...
+                </>
+              ) : (
+                <>
+                  <Sparkles className="size-4" /> Generate Tailored Resume
+                </>
+              )}
+            </Button>
+          </div>
+        </div>
+
+        {/* Upload Modal */}
+        <UploadResumeModal
+          open={uploadModalOpen}
+          onOpenChange={setUploadModalOpen}
+          initialJob={
+            targetTitle || targetCompany
+              ? {
+                  id: activeJobId,
+                  title: targetTitle,
+                  company: targetCompany,
+                  description: targetDescription || undefined,
+                }
+              : null
+          }
+          onLoaded={(loadedResume, newResumeId) => {
+            setContent(loadedResume);
+            setCurrentResumeId(newResumeId);
+            setIsSetupComplete(true);
+            void qc.invalidateQueries({ queryKey: ["versions", newResumeId] });
+          }}
+        />
+      </div>
+    );
+  }
+
+  // ── MAIN STUDIO EDITOR CANVAS ──
   return (
     <div className="flex h-full overflow-hidden bg-background">
-      {/* ── LEFT PANE: form / JSON editor ── */}
+      {/* ── LEFT PANE: Form / JSON Editor ── */}
       {isEditorCollapsed ? (
         <div className="flex w-14 shrink-0 flex-col items-center border-r border-border bg-card py-4 gap-3 transition-all duration-300 shadow-sm">
           <button
@@ -564,18 +778,11 @@ function StudioPage() {
             <Code2 className="size-4.5" />
           </button>
           <button
-            onClick={() => setTargetJobDrawerOpen(true)}
-            className="rounded-xl p-2.5 text-accent hover:bg-accent/10 transition-colors"
-            title="Target Job Description & ATS Analysis"
+            onClick={() => setReTailorModalOpen(true)}
+            className="rounded-xl p-2.5 text-primary hover:bg-primary/10 transition-colors"
+            title="Re-tailor for target job"
           >
-            <Target className="size-4.5" />
-          </button>
-          <button
-            onClick={() => setUploadModalOpen(true)}
-            className="rounded-xl p-2.5 text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
-            title="Upload resume (PDF / DOCX)"
-          >
-            <Upload className="size-4.5" />
+            <Sparkles className="size-4.5" />
           </button>
           <button
             onClick={() => void saveResume(content)}
@@ -643,15 +850,14 @@ function StudioPage() {
 
             <div className="ml-auto flex items-center gap-1.5">
               <Button
-                id="studio-upload-btn"
                 variant="outline"
                 size="sm"
-                className="h-8 px-2.5 text-xs gap-1.5 shadow-xs hover:border-primary/50 transition-all font-medium"
-                onClick={() => setUploadModalOpen(true)}
-                title="Upload previous resume (PDF / DOCX)"
+                className="h-8 px-2.5 text-xs gap-1.5 shadow-xs font-medium"
+                onClick={() => setReTailorModalOpen(true)}
+                title="Switch target JD or re-tailor"
               >
-                <Upload className="size-3.5" />
-                <span className="hidden sm:inline">Upload</span>
+                <Sparkles className="size-3.5 text-primary" />
+                <span className="hidden sm:inline">Re-tailor</span>
               </Button>
               <Button
                 id="studio-save-btn"
@@ -667,47 +873,6 @@ function StudioPage() {
             </div>
           </div>
 
-          {/* Target JD Banner inside Editor */}
-          <div className="border-b border-border/80 bg-secondary/25 px-4 py-2.5 flex items-center justify-between gap-3">
-            <div className="flex items-center gap-2 min-w-0">
-              <div className="grid size-6 place-items-center rounded-md bg-primary/10 text-primary shrink-0">
-                <Target className="size-3.5" />
-              </div>
-              <div className="min-w-0 leading-tight">
-                <div className="text-[11px] font-bold truncate text-foreground">
-                  {targetTitle || "No Target JD Selected"}
-                  {targetCompany ? ` at ${targetCompany}` : ""}
-                </div>
-                <div className="text-[10px] text-muted-foreground truncate">
-                  {atsAnalysis ? `${atsAnalysis.score}% ATS Keyword Match` : "Click to attach JD & optimize"}
-                </div>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-1.5 shrink-0">
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => setTargetJobDrawerOpen(true)}
-                className="h-7 px-2 text-[11px] font-semibold gap-1 rounded-lg"
-              >
-                <Sliders className="size-3" />
-                <span>JD & ATS</span>
-              </Button>
-              <Button
-                size="sm"
-                variant="default"
-                disabled={isTailoring}
-                onClick={handleTailorToJD}
-                className="h-7 px-2.5 text-[11px] font-bold gap-1 rounded-lg shadow-xs"
-                title="Tailor summary, bullets, and keywords to this JD"
-              >
-                {isTailoring ? <Loader2 className="size-3 animate-spin" /> : <Sparkles className="size-3" />}
-                <span>Tailor to JD</span>
-              </Button>
-            </div>
-          </div>
-
           {/* Form or JSON Content */}
           <div className="min-h-0 flex-1 overflow-y-auto p-4 space-y-4">
             {leftTab === "form" ? (
@@ -716,7 +881,7 @@ function StudioPage() {
               <div className="space-y-2.5">
                 <textarea
                   id="studio-json-editor"
-                  className="h-[calc(100vh-270px)] w-full rounded-xl border border-border bg-secondary/30 font-mono text-xs leading-relaxed p-3.5 focus:outline-none focus:ring-1 focus:ring-primary shadow-inner"
+                  className="h-[calc(100vh-220px)] w-full rounded-xl border border-border bg-secondary/30 font-mono text-xs leading-relaxed p-3.5 focus:outline-none focus:ring-1 focus:ring-primary shadow-inner"
                   value={jsonRaw}
                   onChange={(e) => {
                     setJsonRaw(e.target.value);
@@ -729,7 +894,7 @@ function StudioPage() {
                     {jsonError}
                   </p>
                 )}
-                <Button size="sm" onClick={applyJsonEdit} className="w-full h-8 text-xs">
+                <Button size="sm" onClick={applyJsonEdit} className="w-full h-8 text-xs font-semibold">
                   Apply JSON to Preview
                 </Button>
               </div>
@@ -778,7 +943,7 @@ function StudioPage() {
         </div>
       )}
 
-      {/* ── CENTER: live multi-page preview ── */}
+      {/* ── CENTER: Live Multi-Page Preview ── */}
       <div className="min-w-0 flex-1 flex flex-col overflow-hidden bg-muted/40">
         {/* Top Preview Control Bar */}
         <div className="border-b border-border bg-card shadow-xs z-10 shrink-0">
@@ -948,23 +1113,8 @@ function StudioPage() {
               </button>
             </div>
 
-            {/* Top Right: Target JD button & Download PDF */}
+            {/* Top Right: Download PDF */}
             <div className="ml-auto flex items-center gap-2 shrink-0">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setTargetJobDrawerOpen(true)}
-                className="h-9 px-3 text-xs gap-1.5 font-bold rounded-xl border-accent/40 bg-accent/5 hover:bg-accent/15 text-accent-foreground"
-              >
-                <Target className="size-4 text-accent" />
-                <span>Target JD & ATS Match</span>
-                {atsAnalysis && (
-                  <Badge variant="default" className="text-[10px] h-4 px-1 py-0 ml-1">
-                    {atsAnalysis.score}%
-                  </Badge>
-                )}
-              </Button>
-
               <Button
                 id="preview-export-pdf-btn"
                 size="sm"
@@ -1066,200 +1216,95 @@ function StudioPage() {
         </div>
       </div>
 
-      {/* ── Target Job & ATS Analysis Drawer ── */}
-      <Sheet open={targetJobDrawerOpen} onOpenChange={setTargetJobDrawerOpen}>
-        <SheetContent className="w-full sm:max-w-md md:max-w-lg overflow-y-auto p-6 space-y-6">
-          <SheetHeader className="space-y-1">
-            <SheetTitle className="flex items-center gap-2 font-display text-lg">
-              <Target className="size-5 text-primary" /> Target Job Description & ATS
-            </SheetTitle>
-            <SheetDescription className="text-xs">
-              Attach a job description to tailor your resume, check ATS keyword match, or jump to Cover Letter & Interview Prep.
-            </SheetDescription>
-          </SheetHeader>
+      {/* Re-tailor / Change JD Modal */}
+      <Dialog open={reTailorModalOpen} onOpenChange={setReTailorModalOpen}>
+        <DialogContent className="sm:max-w-lg rounded-2xl">
+          <DialogHeader>
+            <DialogTitle className="font-display text-lg font-bold">
+              Tailor Resume to Target Job
+            </DialogTitle>
+            <DialogDescription className="text-xs">
+              Attach a job description to tailor your resume bullet points and summary with verified Knowledge Hub proof points.
+            </DialogDescription>
+          </DialogHeader>
 
-          {/* Job Selection / Input */}
-          <div className="space-y-4 rounded-2xl border border-border bg-card p-4 shadow-xs">
-            <div className="space-y-1.5">
-              <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                Select or Paste Job Description
-              </Label>
-              {savedJobs.length > 0 && (
-                <Select
-                  value={activeJobId}
-                  onValueChange={(val) => {
-                    setActiveJobId(val);
-                  }}
-                >
-                  <SelectTrigger className="h-9 text-xs rounded-xl bg-secondary/40">
-                    <SelectValue placeholder="Choose from saved target jobs..." />
-                  </SelectTrigger>
-                  <SelectContent className="rounded-xl">
-                    <SelectItem value="custom" className="text-xs cursor-pointer">
-                      + Custom / Paste new job description
-                    </SelectItem>
-                    {savedJobs.map((j) => (
-                      <SelectItem key={j.id} value={j.id} className="text-xs cursor-pointer">
-                        {j.title} at {j.company}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              )}
-            </div>
-
-            <div className="grid grid-cols-2 gap-2">
+          <div className="space-y-4 pt-2">
+            <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
-                <Label htmlFor="drawer-title" className="text-[11px] font-semibold text-muted-foreground">
+                <Label htmlFor="retailor-title" className="text-xs font-semibold text-muted-foreground">
                   Job Title
                 </Label>
                 <Input
-                  id="drawer-title"
-                  placeholder="e.g. Staff Software Engineer"
+                  id="retailor-title"
+                  placeholder="e.g. Senior Backend Engineer"
                   value={targetTitle}
                   onChange={(e) => setTargetTitle(e.target.value)}
-                  className="h-8.5 text-xs rounded-xl"
+                  className="text-xs rounded-xl"
                 />
               </div>
               <div className="space-y-1">
-                <Label htmlFor="drawer-comp" className="text-[11px] font-semibold text-muted-foreground">
+                <Label htmlFor="retailor-comp" className="text-xs font-semibold text-muted-foreground">
                   Company Name
                 </Label>
                 <Input
-                  id="drawer-comp"
-                  placeholder="e.g. OpenAI"
+                  id="retailor-comp"
+                  placeholder="e.g. Stripe"
                   value={targetCompany}
                   onChange={(e) => setTargetCompany(e.target.value)}
-                  className="h-8.5 text-xs rounded-xl"
+                  className="text-xs rounded-xl"
                 />
               </div>
             </div>
 
             <div className="space-y-1">
-              <Label htmlFor="drawer-desc" className="text-[11px] font-semibold text-muted-foreground">
-                Job Description Requirements & Text
+              <Label htmlFor="retailor-desc" className="text-xs font-semibold text-muted-foreground">
+                Job Description Requirements
               </Label>
               <Textarea
-                id="drawer-desc"
-                rows={5}
-                placeholder="Paste the full job description here..."
+                id="retailor-desc"
+                rows={4}
+                placeholder="Paste key responsibilities and requirements..."
                 value={targetDescription}
                 onChange={(e) => setTargetDescription(e.target.value)}
                 className="text-xs resize-none rounded-xl leading-relaxed bg-secondary/30"
               />
             </div>
 
-            {/* Actions */}
-            <div className="flex flex-wrap gap-2 pt-1">
+            <div className="space-y-1">
+              <Label htmlFor="retailor-inst" className="text-xs font-semibold text-muted-foreground">
+                Specific Instructions (optional)
+              </Label>
+              <Input
+                id="retailor-inst"
+                placeholder="e.g. Emphasize AWS and Kubernetes infrastructure projects"
+                value={customInstructions}
+                onChange={(e) => setCustomInstructions(e.target.value)}
+                className="text-xs rounded-xl"
+              />
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-border/70">
               <Button
-                onClick={handleTailorToJD}
+                variant="ghost"
+                size="sm"
+                onClick={() => setReTailorModalOpen(false)}
+                className="text-xs rounded-xl"
+              >
+                Cancel
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => void handleExecuteTailoring(content)}
                 disabled={isTailoring}
-                className="flex-1 font-bold text-xs h-9 gap-1.5 rounded-xl shadow-sm"
+                className="font-bold text-xs gap-1.5 rounded-xl shadow-xs"
               >
                 {isTailoring ? <Loader2 className="size-3.5 animate-spin" /> : <Sparkles className="size-3.5" />}
-                <span>Tailor Resume to JD</span>
-              </Button>
-              <Button
-                variant="outline"
-                onClick={() => void handleRunAtsAnalysis()}
-                disabled={isAnalyzingAts || !targetDescription}
-                className="font-semibold text-xs h-9 gap-1 rounded-xl"
-              >
-                {isAnalyzingAts ? <Loader2 className="size-3.5 animate-spin" /> : <Zap className="size-3.5 text-primary" />}
-                <span>Check ATS Match</span>
+                <span>{isTailoring ? "Tailoring..." : "Tailor Resume"}</span>
               </Button>
             </div>
           </div>
-
-          {/* ATS Analysis Results */}
-          {atsAnalysis && (
-            <div className="space-y-4 rounded-2xl border border-border bg-card p-5 shadow-xs animate-fade-in">
-              <div className="flex items-center justify-between border-b border-border/60 pb-3">
-                <div>
-                  <h4 className="font-display text-sm font-bold text-foreground">ATS Keyword Analysis</h4>
-                  <p className="text-[11px] text-muted-foreground">Real-time match against target JD</p>
-                </div>
-                <div className="grid size-12 place-items-center rounded-2xl bg-primary/10 text-primary font-display text-lg font-bold">
-                  {atsAnalysis.score}%
-                </div>
-              </div>
-
-              {/* Matched Keywords */}
-              <div className="space-y-1.5">
-                <span className="text-[11px] font-bold text-success flex items-center gap-1">
-                  <CheckCircle2 className="size-3.5" /> Matched Keywords ({atsAnalysis.matched_keywords.length})
-                </span>
-                <div className="flex flex-wrap gap-1">
-                  {atsAnalysis.matched_keywords.map((kw, i) => (
-                    <Badge key={i} variant="secondary" className="text-[10px] bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/20 font-medium">
-                      ✓ {kw}
-                    </Badge>
-                  ))}
-                </div>
-              </div>
-
-              {/* Missing Keywords */}
-              {atsAnalysis.missing_keywords.length > 0 && (
-                <div className="space-y-1.5">
-                  <span className="text-[11px] font-bold text-amber-600 dark:text-amber-400 flex items-center gap-1">
-                    <AlertCircle className="size-3.5" /> Missing / Gap Keywords ({atsAnalysis.missing_keywords.length})
-                  </span>
-                  <div className="flex flex-wrap gap-1">
-                    {atsAnalysis.missing_keywords.map((kw, i) => (
-                      <Badge key={i} variant="outline" className="text-[10px] border-amber-500/30 text-amber-700 dark:text-amber-300 font-medium">
-                        + {kw}
-                      </Badge>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Optimization Suggestions */}
-              {atsAnalysis.suggestions.length > 0 && (
-                <div className="space-y-1.5 pt-2 border-t border-border/60">
-                  <span className="text-[11px] font-bold text-foreground">ATS Optimization Tips</span>
-                  <ul className="space-y-1 text-[11px] text-muted-foreground list-disc list-inside">
-                    {atsAnalysis.suggestions.map((s, i) => (
-                      <li key={i}>{s}</li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Quick Pillar Jump Links */}
-          <div className="rounded-2xl border border-border/80 bg-secondary/30 p-4 space-y-2.5">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
-              Continue with this Target Job
-            </span>
-            <div className="grid grid-cols-2 gap-2">
-              <Link
-                to="/cover-letter"
-                search={{ jobId: activeJobId && activeJobId !== "custom" ? activeJobId : undefined }}
-                className="flex items-center justify-between p-2.5 rounded-xl border border-border bg-card hover:border-primary/50 text-xs font-semibold transition-all group"
-              >
-                <div className="flex items-center gap-2">
-                  <Mail className="size-4 text-primary" />
-                  <span>Cover Letter</span>
-                </div>
-                <ChevronRight className="size-3 text-muted-foreground group-hover:text-primary transition-colors" />
-              </Link>
-              <Link
-                to="/interview"
-                search={{ jobId: activeJobId && activeJobId !== "custom" ? activeJobId : undefined }}
-                className="flex items-center justify-between p-2.5 rounded-xl border border-border bg-card hover:border-primary/50 text-xs font-semibold transition-all group"
-              >
-                <div className="flex items-center gap-2">
-                  <Mic className="size-4 text-primary" />
-                  <span>Interview Prep</span>
-                </div>
-                <ChevronRight className="size-3 text-muted-foreground group-hover:text-primary transition-colors" />
-              </Link>
-            </div>
-          </div>
-        </SheetContent>
-      </Sheet>
+        </DialogContent>
+      </Dialog>
 
       {/* Checkpoints & History Modal */}
       <CheckpointsModal
