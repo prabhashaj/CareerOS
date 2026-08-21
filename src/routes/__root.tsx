@@ -40,24 +40,52 @@ function NotFoundComponent() {
 function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
   console.error(error);
   const router = useRouter();
+
   useEffect(() => {
     reportAppError(error, { boundary: "tanstack_root_error_component" });
+
+    // Handle stale dynamic import chunk errors after new deployments
+    const isChunkError =
+      error.message?.includes("Failed to fetch dynamically imported module") ||
+      error.message?.includes("Importing a module script failed") ||
+      error.message?.includes("Loading chunk");
+
+    if (isChunkError && typeof window !== "undefined") {
+      const lastReload = sessionStorage.getItem("last_chunk_error_reload");
+      const now = Date.now();
+      if (!lastReload || now - Number(lastReload) > 10000) {
+        sessionStorage.setItem("last_chunk_error_reload", String(now));
+        window.location.reload();
+      }
+    }
   }, [error]);
+
+  const handleRetry = () => {
+    if (typeof window !== "undefined") {
+      window.location.reload();
+    } else {
+      router.invalidate();
+      reset();
+    }
+  };
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
-      <div className="max-w-md text-center">
-        <h1 className="text-xl font-semibold tracking-tight text-foreground">Something went wrong</h1>
-        <p className="mt-2 text-sm text-muted-foreground">{error.message}</p>
-        <div className="mt-6 flex flex-wrap justify-center gap-2">
+      <div className="max-w-md text-center space-y-4 rounded-3xl border border-border bg-card p-8 shadow-lift">
+        <h1 className="text-xl font-bold tracking-tight text-foreground font-display">Something went wrong</h1>
+        <p className="text-xs text-muted-foreground leading-relaxed">{error.message}</p>
+        <div className="pt-2 flex flex-wrap justify-center gap-2.5">
           <button
-            onClick={() => { router.invalidate(); reset(); }}
-            className="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+            onClick={handleRetry}
+            className="inline-flex items-center justify-center rounded-xl bg-primary px-4 py-2 text-xs font-bold text-primary-foreground hover:opacity-90 shadow-xs"
           >
-            Try again
+            Refresh & Update App
           </button>
-          <a href="/" className="inline-flex items-center justify-center rounded-md border border-input bg-background px-4 py-2 text-sm font-medium text-foreground hover:bg-accent">
-            Go home
+          <a
+            href="/"
+            className="inline-flex items-center justify-center rounded-xl border border-border bg-secondary/50 px-4 py-2 text-xs font-semibold text-foreground hover:bg-secondary"
+          >
+            Go to Home
           </a>
         </div>
       </div>

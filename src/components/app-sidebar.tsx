@@ -2,7 +2,6 @@ import { Link, useRouterState } from "@tanstack/react-router";
 import {
   Briefcase,
   LayoutDashboard,
-  FileText,
   Settings,
   Upload,
   LogOut,
@@ -30,16 +29,16 @@ import { useAuth } from "@/hooks/use-auth";
 import { useNavigate } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
 
-const corePillars = [
-  { title: "Resume Studio", url: "/studio", icon: Sparkles },
-  { title: "Cover Letter Maker", url: "/cover-letter", icon: Mail },
-  { title: "Interview Prep", url: "/interview", icon: Mic },
-];
-
-const workspace = [
+const primaryWorkspace = [
   { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard },
   { title: "Target Roles & JDs", url: "/jobs", icon: Briefcase },
   { title: "My Resumes & Docs", url: "/resumes", icon: FolderOpen },
+];
+
+const aiSuperpowers = [
+  { title: "Resume Studio", url: "/studio", icon: Sparkles },
+  { title: "Cover Letter Maker", url: "/cover-letter", icon: Mail },
+  { title: "Interview Prep", url: "/interview", icon: Mic },
 ];
 
 const account = [
@@ -57,7 +56,7 @@ export function AppSidebar() {
 
   const isActive = (url: string) => pathname === url || pathname.startsWith(url + "/");
 
-  const renderGroup = (label: string, items: typeof corePillars) => (
+  const renderGroup = (label: string, items: typeof primaryWorkspace) => (
     <SidebarGroup>
       {!collapsed && <SidebarGroupLabel>{label}</SidebarGroupLabel>}
       <SidebarGroupContent>
@@ -94,8 +93,8 @@ export function AppSidebar() {
         <SidebarTrigger className="shrink-0 text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent" />
       </SidebarHeader>
       <SidebarContent>
-        {renderGroup("AI Superpowers", corePillars)}
-        {renderGroup("Workspace", workspace)}
+        {renderGroup("Workspace", primaryWorkspace)}
+        {renderGroup("AI Superpowers", aiSuperpowers)}
         {renderGroup("Account", account)}
       </SidebarContent>
       <SidebarFooter>
