@@ -57,12 +57,23 @@ function Dashboard() {
     enabled: !!user,
     queryFn: async () => {
       const { data } = await supabase
-        .from("resumes")
-        .select("*")
+        .from("documents")
+        .select("id, title, metadata, created_at, updated_at")
         .eq("user_id", user!.id)
+        .eq("kind", "resume")
         .order("updated_at", { ascending: false })
         .limit(6);
-      return data ?? [];
+      return (data ?? []).map((doc) => {
+        const meta = (doc.metadata as Record<string, unknown>) || {};
+        return {
+          id: doc.id,
+          title: doc.title,
+          template_id: (meta["template_id"] as string) || "minimal",
+          version: (meta["version"] as number) || 1,
+          updated_at: doc.updated_at,
+          created_at: doc.created_at,
+        };
+      });
     },
   });
 

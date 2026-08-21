@@ -5,7 +5,6 @@ import {
   Upload,
   FileText,
   Sparkles,
-  CheckCircle2,
   Loader2,
   FileType,
   FileCode,
@@ -107,34 +106,39 @@ export function UploadResumeModal({ open, onOpenChange, onLoaded }: Props) {
         ? `${normalized.contact.name}'s Resume`
         : selectedFile.name.replace(/\.[^/.]+$/, "") || "Imported Resume";
 
-      const { data: savedResume, error: saveErr } = await supabase
-        .from("resumes")
+      // Clear previous primary resume flags
+      try {
+        await supabase
+          .from("documents")
+          .update({ is_primary: false })
+          .eq("user_id", user.id)
+          .eq("kind", "resume");
+      } catch (e) {
+        console.warn("Primary reset note:", e);
+      }
+
+      // Save structured resume to documents table with kind: 'resume'
+      const { data: savedDoc, error: saveErr } = await supabase
+        .from("documents")
         .insert({
           user_id: user.id,
           title: resumeTitle,
-          content: normalized as unknown as Json,
-          template_id: "minimal",
+          kind: "resume",
+          extracted_text: res.extractedText || "",
+          metadata: {
+            content: normalized,
+            template_id: "minimal",
+            version: 1,
+          } as unknown as Json,
+          is_primary: true,
         })
         .select("id")
         .single();
 
       if (saveErr) throw saveErr;
 
-      // Index extracted text into Knowledge Hub documents
-      try {
-        await supabase.from("documents").insert({
-          user_id: user.id,
-          title: resumeTitle,
-          kind: "resume",
-          extracted_text: res.extractedText,
-          is_primary: true,
-        });
-      } catch (e) {
-        console.warn("Knowledge Hub indexing note:", e);
-      }
-
       return {
-        resumeId: savedResume.id,
+        resumeId: savedDoc.id,
         resumeContent: normalized,
         resumeTitle,
       };
@@ -171,34 +175,39 @@ export function UploadResumeModal({ open, onOpenChange, onLoaded }: Props) {
         ? `${normalized.contact.name}'s Resume`
         : "Pasted Resume";
 
-      const { data: savedResume, error: saveErr } = await supabase
-        .from("resumes")
+      // Clear previous primary resume flags
+      try {
+        await supabase
+          .from("documents")
+          .update({ is_primary: false })
+          .eq("user_id", user.id)
+          .eq("kind", "resume");
+      } catch (e) {
+        console.warn("Primary reset note:", e);
+      }
+
+      // Save structured resume to documents table with kind: 'resume'
+      const { data: savedDoc, error: saveErr } = await supabase
+        .from("documents")
         .insert({
           user_id: user.id,
           title: resumeTitle,
-          content: normalized as unknown as Json,
-          template_id: "minimal",
+          kind: "resume",
+          extracted_text: text,
+          metadata: {
+            content: normalized,
+            template_id: "minimal",
+            version: 1,
+          } as unknown as Json,
+          is_primary: true,
         })
         .select("id")
         .single();
 
       if (saveErr) throw saveErr;
 
-      // Index into Knowledge Hub documents
-      try {
-        await supabase.from("documents").insert({
-          user_id: user.id,
-          title: resumeTitle,
-          kind: "resume",
-          extracted_text: text,
-          is_primary: true,
-        });
-      } catch (e) {
-        console.warn("Knowledge Hub indexing note:", e);
-      }
-
       return {
-        resumeId: savedResume.id,
+        resumeId: savedDoc.id,
         resumeContent: normalized,
         resumeTitle,
       };

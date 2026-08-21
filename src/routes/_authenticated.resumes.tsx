@@ -100,12 +100,28 @@ function DocumentsAndResumesPage() {
     enabled: !!user,
     queryFn: async () => {
       const { data, error } = await supabase
-        .from("resumes")
-        .select("*")
+        .from("documents")
+        .select("id, title, metadata, extracted_text, created_at, updated_at")
         .eq("user_id", user!.id)
+        .eq("kind", "resume")
         .order("updated_at", { ascending: false });
-      if (error) throw error;
-      return (data ?? []) as ResumeItem[];
+      if (error) {
+        console.warn("Could not fetch resumes from documents:", error);
+        return [];
+      }
+      return (data ?? []).map((doc) => {
+        const meta = (doc.metadata as Record<string, unknown>) || {};
+        return {
+          id: doc.id,
+          user_id: user!.id,
+          title: doc.title || "Untitled Resume",
+          content: meta["content"] || null,
+          template_id: (meta["template_id"] as string) || "minimal",
+          version: (meta["version"] as number) || 1,
+          created_at: doc.created_at,
+          updated_at: doc.updated_at,
+        } as ResumeItem;
+      });
     },
   });
 
@@ -119,12 +135,17 @@ function DocumentsAndResumesPage() {
     mutationFn: async () => {
       const content = starterResume();
       const { data, error } = await supabase
-        .from("resumes")
+        .from("documents")
         .insert({
           user_id: user!.id,
           title: "New Resume",
-          content: content as unknown as Json,
-          template_id: "minimal",
+          kind: "resume",
+          metadata: {
+            content,
+            template_id: "minimal",
+            version: 1,
+          } as unknown as Json,
+          is_primary: true,
         })
         .select("id")
         .single();
@@ -133,6 +154,7 @@ function DocumentsAndResumesPage() {
     },
     onSuccess: (id) => {
       void qc.invalidateQueries({ queryKey: ["resumes"] });
+      void qc.invalidateQueries({ queryKey: ["documents"] });
       void navigate({ to: "/studio", search: { resumeId: id } });
     },
     onError: () => toast.error("Could not create resume"),
@@ -140,11 +162,12 @@ function DocumentsAndResumesPage() {
 
   const deleteResumeMut = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase.from("resumes").delete().eq("id", id);
+      const { error } = await supabase.from("documents").delete().eq("id", id);
       if (error) throw error;
     },
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["resumes"] });
+      void qc.invalidateQueries({ queryKey: ["documents"] });
       setDeleteResumeId(null);
       toast.success("Resume deleted");
     },

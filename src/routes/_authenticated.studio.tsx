@@ -195,18 +195,33 @@ function StudioPage() {
     queryKey: ["saved-jobs", user?.id],
     enabled: !!user,
     queryFn: () => listJobsFn(),
-  });
-
+  });  // Fetch existing resumes from documents table
   const { data: userResumes = [] } = useQuery({
     queryKey: ["resumes", user?.id],
     enabled: !!user,
     queryFn: async () => {
-      const { data } = await supabase
-        .from("resumes")
-        .select("*")
+      const { data, error } = await supabase
+        .from("documents")
+        .select("id, title, metadata, extracted_text, created_at, updated_at")
         .eq("user_id", user!.id)
+        .eq("kind", "resume")
         .order("updated_at", { ascending: false });
-      return data ?? [];
+      if (error) {
+        console.warn("Could not fetch resumes from documents:", error);
+        return [];
+      }
+      return (data ?? []).map((doc) => {
+        const meta = (doc.metadata as Record<string, unknown>) || {};
+        return {
+          id: doc.id,
+          title: doc.title || "Untitled Resume",
+          content: meta["content"] || null,
+          template_id: (meta["template_id"] as string) || "minimal",
+          version: (meta["version"] as number) || 1,
+          updated_at: doc.updated_at,
+          created_at: doc.created_at,
+        };
+      });
     },
   });
 
@@ -233,12 +248,21 @@ function StudioPage() {
     queryKey: ["resume", resumeId],
     enabled: !!resumeId,
     queryFn: async () => {
-      const { data } = await supabase
-        .from("resumes")
+      const { data, error } = await supabase
+        .from("documents")
         .select("*")
         .eq("id", resumeId!)
         .maybeSingle();
-      return data;
+      if (error || !data) return null;
+      const meta = (data.metadata as Record<string, unknown>) || {};
+      return {
+        id: data.id,
+        title: data.title,
+        content: meta["content"] || null,
+        template_id: (meta["template_id"] as string) || "minimal",
+        version: (meta["version"] as number) || 1,
+        extracted_text: data.extracted_text,
+      };
     },
   });
 
@@ -248,21 +272,30 @@ function StudioPage() {
     enabled: !!currentResumeId,
     queryFn: async () => {
       const { data } = await supabase
-        .from("resume_versions")
-        .select("*")
-        .eq("resume_id", currentResumeId!)
-        .order("version", { ascending: false })
-        .limit(30);
-      return (data ?? []) as Array<{
+        .from("documents")
+        .select("id, title, metadata, updated_at")
+        .eq("id", currentResumeId!)
+        .maybeSingle();
+      if (!data) return [];
+      const meta = (data.metadata as Record<string, unknown>) || {};
+      const checkpoints = (meta["checkpoints"] as Array<{
         id: string;
         version: number;
         label: string | null;
         created_at: string;
         content: unknown;
-        resume_id: string;
-        user_id: string;
         template_id?: string;
-      }>;
+      }>) || [];
+      return checkpoints.map((c) => ({
+        id: c.id,
+        version: c.version,
+        label: c.label,
+        created_at: c.created_at,
+        content: c.content,
+        resume_id: data.id,
+        user_id: user?.id || "",
+        template_id: c.template_id,
+      }));
     },
   });
 
@@ -288,34 +321,50 @@ function StudioPage() {
       setIsSaving(true);
       try {
         if (currentResumeId) {
-          await supabase
-            .from("resumes")
-            .update({ content: c as unknown as Json, template_id: tpl, updated_at: new Date().toISOString() })
+          const { error } = await supabase
+            .from("documents")
+            .update({
+              title: c.contact.name ? `${c.contact.name}'s Resume` : "Untitled Resume",
+              metadata: {
+                content: c,
+                template_id: tpl,
+                version: 1,
+              } as unknown as Json,
+              updated_at: new Date().toISOString(),
+            })
             .eq("id", currentResumeId);
+          if (error) throw error;
         } else {
-          const { data } = await supabase
-            .from("resumes")
+          const { data, error } = await supabase
+            .from("documents")
             .insert({
               user_id: user.id,
-              title: c.contact.name || "Untitled Resume",
-              content: c as unknown as Json,
-              template_id: tpl,
-              created_from_job_id: activeJobId && activeJobId !== "custom" ? activeJobId : null,
+              title: c.contact.name ? `${c.contact.name}'s Resume` : "Untitled Resume",
+              kind: "resume",
+              metadata: {
+                content: c,
+                template_id: tpl,
+                version: 1,
+              } as unknown as Json,
+              is_primary: true,
             })
             .select("id")
             .single();
+          if (error) throw error;
           if (data) setCurrentResumeId(data.id);
         }
         await qc.invalidateQueries({ queryKey: ["versions", currentResumeId] });
         await qc.invalidateQueries({ queryKey: ["resumes"] });
+        await qc.invalidateQueries({ queryKey: ["documents"] });
         toast.success("Saved");
-      } catch {
-        toast.error("Save failed");
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : "Save failed";
+        toast.error(msg);
       } finally {
         setIsSaving(false);
       }
     },
-    [activeJobId, currentResumeId, qc, template, user],
+    [currentResumeId, qc, template, user],
   );
 
   // Checkpoint creation handler
@@ -328,41 +377,73 @@ function StudioPage() {
       try {
         let resumeIdToUse = currentResumeId;
         if (!resumeIdToUse) {
-          const { data: newResume } = await supabase
-            .from("resumes")
+          const { data: newDoc, error: insertErr } = await supabase
+            .from("documents")
             .insert({
               user_id: user.id,
-              title: targetContent.contact.name || "Untitled Resume",
-              content: targetContent as unknown as Json,
-              template_id: template,
-              created_from_job_id: activeJobId && activeJobId !== "custom" ? activeJobId : null,
+              title: targetContent.contact.name ? `${targetContent.contact.name}'s Resume` : "Untitled Resume",
+              kind: "resume",
+              metadata: {
+                content: targetContent,
+                template_id: template,
+                version: 1,
+                checkpoints: [
+                  {
+                    id: crypto.randomUUID(),
+                    version: 1,
+                    label,
+                    created_at: new Date().toISOString(),
+                    content: targetContent,
+                    template_id: template,
+                  },
+                ],
+              } as unknown as Json,
+              is_primary: true,
             })
             .select("id")
             .single();
-          if (newResume) {
-            resumeIdToUse = newResume.id;
-            setCurrentResumeId(newResume.id);
+          if (insertErr) throw insertErr;
+          if (newDoc) {
+            resumeIdToUse = newDoc.id;
+            setCurrentResumeId(newDoc.id);
           }
+        } else {
+          const newCheckpoint = {
+            id: crypto.randomUUID(),
+            version: nextVersion,
+            label,
+            created_at: new Date().toISOString(),
+            content: targetContent,
+            template_id: template,
+          };
+          const { data: doc } = await supabase.from("documents").select("metadata").eq("id", resumeIdToUse).maybeSingle();
+          const meta = (doc?.metadata as Record<string, unknown>) || {};
+          const existingCheckpoints = (meta["checkpoints"] as unknown[]) || [];
+          await supabase
+            .from("documents")
+            .update({
+              metadata: {
+                ...meta,
+                content: targetContent,
+                template_id: template,
+                version: nextVersion,
+                checkpoints: [newCheckpoint, ...existingCheckpoints],
+              } as unknown as Json,
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", resumeIdToUse);
         }
 
         if (resumeIdToUse) {
-          await supabase.from("resume_versions").insert({
-            resume_id: resumeIdToUse,
-            user_id: user.id,
-            version: nextVersion,
-            label,
-            content: targetContent as unknown as Json,
-            template_id: template,
-          });
           await qc.invalidateQueries({ queryKey: ["versions", resumeIdToUse] });
-          toast.success(`Checkpoint saved: ${label} (v${nextVersion})`);
+          await qc.invalidateQueries({ queryKey: ["resumes"] });
+          await qc.invalidateQueries({ queryKey: ["documents"] });
         }
-      } catch (err) {
-        console.error("Checkpoint save failed:", err);
-        toast.error("Could not save checkpoint");
+      } catch (err: unknown) {
+        console.warn("Checkpoint save note:", err);
       }
     },
-    [activeJobId, content, currentResumeId, qc, template, user, versions],
+    [content, currentResumeId, qc, template, user, versions],
   );
 
   // Revert to checkpoint

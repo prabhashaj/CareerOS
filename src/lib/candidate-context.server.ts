@@ -6,7 +6,7 @@ type CandidateDoc = {
 };
 
 export async function loadCandidateText(supabase: any, userId: string, maxChars = 20_000) {
-  const [{ data: profile }, { data: docs }, { data: savedResumes }] = await Promise.all([
+  const [{ data: profile }, { data: docs }] = await Promise.all([
     supabase
       .from("profiles")
       .select("full_name, headline, location, target_roles, target_locations, linkedin_url, portfolio_url, preferences")
@@ -19,12 +19,6 @@ export async function loadCandidateText(supabase: any, userId: string, maxChars 
       .not("extracted_text", "is", null)
       .order("is_primary", { ascending: false })
       .order("created_at", { ascending: false }),
-    supabase
-      .from("resumes")
-      .select("title, content, updated_at")
-      .eq("user_id", userId)
-      .order("updated_at", { ascending: false })
-      .limit(3),
   ]);
 
   const profileBlock = profile
@@ -49,8 +43,9 @@ export async function loadCandidateText(supabase: any, userId: string, maxChars 
     .map((doc) => `DOCUMENT (${doc.kind?.toUpperCase() ?? "GENERAL"} - ${doc.title ?? "Untitled"}): \n${doc.extracted_text!.trim()}`)
     .join("\n\n---\n\n");
 
-  const savedResumeBlocks = (savedResumes ?? [])
-    .map((r: any) => `SAVED RESUME STRUCTURE (${r.title || "Resume"}):\n${JSON.stringify(r.content)}`)
+  const savedResumeBlocks = ((docs ?? []) as any[])
+    .filter((d) => d.kind === "resume")
+    .map((r: any) => `SAVED RESUME (${r.title || "Resume"}):\n${r.extracted_text || ""}`)
     .join("\n\n---\n\n");
 
   let localContext = "";

@@ -21,7 +21,7 @@ async function loadCandidateContext(
     console.warn("Vector match skipped or failed", err);
   }
 
-  const [{ data: profile }, { data: allDocs }, { data: savedResumes }] = await Promise.all([
+  const [{ data: profile }, { data: allDocs }] = await Promise.all([
     supabase.from("profiles").select("*").eq("id", userId).maybeSingle(),
     supabase
       .from("documents")
@@ -30,12 +30,6 @@ async function loadCandidateContext(
       .not("extracted_text", "is", null)
       .order("is_primary", { ascending: false })
       .order("created_at", { ascending: false }),
-    supabase
-      .from("resumes")
-      .select("content, title")
-      .eq("user_id", userId)
-      .order("updated_at", { ascending: false })
-      .limit(3),
   ]);
 
   const profileBlock = profile
@@ -51,8 +45,9 @@ async function loadCandidateContext(
     .map((d: any) => `DOCUMENT (${d.kind?.toUpperCase() ?? "DOC"} - ${d.title ?? "Untitled"}${d.is_primary ? " [PRIMARY]" : ""}):\n${d.extracted_text?.trim()}`)
     .join("\n\n---\n\n");
 
-  const savedResumeBlocks = (savedResumes ?? [])
-    .map((r: any) => `SAVED RESUME (${r.title || "Resume"}):\n${JSON.stringify(r.content)}`)
+  const savedResumeBlocks = ((allDocs ?? []) as any[])
+    .filter((d) => d.kind === "resume")
+    .map((r: any) => `SAVED RESUME (${r.title || "Resume"}):\n${r.extracted_text || ""}`)
     .join("\n\n---\n\n");
 
   let localContext = "";
