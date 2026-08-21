@@ -9,11 +9,9 @@ export const resetWorkspace = createServerFn({ method: "POST" })
       confirm: z.literal("RESET"),
       scopes: z.array(z.enum([
         "jobs",
-        "applications",
+        "resumes",
         "documents",
         "chunks",
-        "review_queue",
-        "events",
         "profile_extras",
       ])).min(1),
     }).parse(input),
@@ -32,19 +30,29 @@ export const resetWorkspace = createServerFn({ method: "POST" })
       counts[table] = count ?? 0;
     };
 
-    // Order matters — children first.
-    if (data.scopes.includes("events")) await wipe("application_events");
-    if (data.scopes.includes("review_queue")) await wipe("review_queue");
-    if (data.scopes.includes("applications")) await wipe("job_applications");
-    if (data.scopes.includes("chunks")) await wipe("document_chunks");
-    if (data.scopes.includes("documents")) await wipe("documents");
-    if (data.scopes.includes("jobs")) await wipe("jobs");
+    // Clean up dependent child tables first
+    if (data.scopes.includes("resumes")) {
+      try { await wipe("resume_versions"); } catch (e) { console.warn(e); }
+      await wipe("resumes");
+    }
+    if (data.scopes.includes("chunks")) {
+      await wipe("document_chunks");
+    }
+    if (data.scopes.includes("documents")) {
+      try { await wipe("document_chunks"); } catch (e) { console.warn(e); }
+      await wipe("documents");
+    }
+    if (data.scopes.includes("jobs")) {
+      try { await wipe("job_applications"); } catch (e) { console.warn(e); }
+      await wipe("jobs");
+    }
 
     if (data.scopes.includes("profile_extras")) {
       await supabase.from("profiles").update({
         preferences: {},
         target_roles: [],
         target_locations: [],
+        headline: null,
       }).eq("id", userId);
       counts.profile_extras = 1;
     }

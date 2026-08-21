@@ -4,7 +4,21 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 import ReactMarkdown from "react-markdown";
-import { Sparkles, Trash2, AlertTriangle, Wand2, Zap, Check } from "lucide-react";
+import {
+  Sparkles,
+  Trash2,
+  AlertTriangle,
+  Wand2,
+  Briefcase,
+  FileText,
+  BookOpen,
+  Layers,
+  CheckCircle2,
+  Sliders,
+  Globe,
+  Loader2,
+  ShieldAlert,
+} from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { getMyProfile, updateMyProfile } from "@/lib/profile.functions";
 import { expandProfile } from "@/lib/expand.functions";
@@ -15,6 +29,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/_authenticated/settings")({
   head: () => ({ meta: [{ title: "Settings — CareerOS" }] }),
@@ -43,24 +58,44 @@ function ExpandSection() {
   };
 
   return (
-    <div className="mt-8 max-w-2xl space-y-4 rounded-xl border border-border bg-card p-6">
-      <div>
-        <h2 className="text-lg font-medium">Expand profile from the web</h2>
-        <p className="text-sm text-muted-foreground">
-          Paste LinkedIn, GitHub, portfolio, Scholar, or personal-site URLs. We'll scrape them,
-          extract a clean knowledge base, and index it so tailoring uses richer context.
+    <div className="space-y-4 rounded-2xl border border-border bg-card p-6 sm:p-8 shadow-xs">
+      <div className="space-y-1">
+        <div className="flex items-center gap-2">
+          <Globe className="size-4 text-primary" />
+          <h2 className="font-display text-lg font-bold text-foreground">Enrich Profile from Web Sources</h2>
+        </div>
+        <p className="text-xs text-muted-foreground leading-relaxed">
+          Paste LinkedIn, GitHub, portfolio, Google Scholar, or personal website URLs. We extract your verified experience and index it into your Knowledge Hub.
         </p>
       </div>
-      <Textarea rows={4} value={urls} onChange={(e) => setUrls(e.target.value)} placeholder={"https://github.com/you\nhttps://your-portfolio.com\nhttps://scholar.google.com/citations?user=..."} />
-      <Button onClick={run} disabled={busy}>
-        <Sparkles className="mr-2 h-4 w-4" /> {busy ? "Enriching…" : "Expand profile"}
+
+      <Textarea
+        rows={4}
+        value={urls}
+        onChange={(e) => setUrls(e.target.value)}
+        placeholder={"https://github.com/your-username\nhttps://your-portfolio.com\nhttps://linkedin.com/in/your-profile"}
+        className="text-xs resize-none rounded-xl leading-relaxed bg-secondary/30"
+      />
+
+      <Button
+        onClick={run}
+        disabled={busy}
+        className="h-9 font-bold text-xs gap-1.5 rounded-xl shadow-xs"
+      >
+        {busy ? <Loader2 className="size-3.5 animate-spin" /> : <Sparkles className="size-3.5" />}
+        <span>{busy ? "Enriching Knowledge Hub…" : "Enrich Knowledge Hub"}</span>
       </Button>
+
       {result && (
-        <div className="space-y-1 rounded-md border border-border p-3 text-sm">
-          <div className="font-medium">Done — {result.enriched_chars.toLocaleString()} chars, {result.chunks} chunks</div>
-          <ul className="text-xs text-muted-foreground">
+        <div className="space-y-2 rounded-xl border border-border bg-secondary/20 p-3.5 text-xs animate-fade-in">
+          <div className="font-bold text-foreground flex items-center gap-1.5">
+            <CheckCircle2 className="size-4 text-success" /> Done — {result.enriched_chars.toLocaleString()} characters ({result.chunks} vector chunks indexed)
+          </div>
+          <ul className="text-[11px] text-muted-foreground space-y-0.5">
             {result.sources.map((s, i) => (
-              <li key={i}>{s.ok ? "✓" : "✗"} {s.url}{s.error ? ` — ${s.error}` : ""}</li>
+              <li key={i} className="truncate">
+                {s.ok ? "✓" : "✗"} {s.url}{s.error ? ` — ${s.error}` : ""}
+              </li>
             ))}
           </ul>
         </div>
@@ -81,7 +116,7 @@ function WritingStyleSection({ currentStyle }: { currentStyle: WritingStyle | nu
     setBusy(true);
     try {
       await analyze({ data: { samples } });
-      toast.success("Style profile saved — tailoring will now match your voice");
+      toast.success("Writing voice profile saved");
       qc.invalidateQueries({ queryKey: ["profile"] });
       setSamples("");
     } catch (e) {
@@ -92,43 +127,66 @@ function WritingStyleSection({ currentStyle }: { currentStyle: WritingStyle | nu
   };
 
   return (
-    <div className="mt-8 max-w-2xl space-y-4 rounded-xl border border-border bg-card p-6">
-      <div>
-        <h2 className="text-lg font-medium">Writing style</h2>
-        <p className="text-sm text-muted-foreground">
-          Paste 2–4 samples of your own writing (cover letters, blog posts, emails). AI extracts a voice profile that
-          steers every tailoring task.
+    <div className="space-y-4 rounded-2xl border border-border bg-card p-6 sm:p-8 shadow-xs">
+      <div className="space-y-1">
+        <div className="flex items-center gap-2">
+          <Wand2 className="size-4 text-primary" />
+          <h2 className="font-display text-lg font-bold text-foreground">Writing Voice & Tone Preferences</h2>
+        </div>
+        <p className="text-xs text-muted-foreground leading-relaxed">
+          Paste 2–4 paragraphs of your own natural writing (past cover letters, emails, posts). AI extracts your distinct communication voice for all tailoring tasks.
         </p>
       </div>
-      <Textarea rows={5} value={samples} onChange={(e) => setSamples(e.target.value)} placeholder="Paste a few paragraphs you wrote in your natural voice…" />
+
+      <Textarea
+        rows={4}
+        value={samples}
+        onChange={(e) => setSamples(e.target.value)}
+        placeholder="Paste writing samples representing your authentic voice and tone..."
+        className="text-xs resize-none rounded-xl leading-relaxed bg-secondary/30"
+      />
+
       <div className="flex flex-wrap items-center gap-2">
-        <Button onClick={run} disabled={busy}>
-          <Wand2 className="mr-2 h-4 w-4" /> {busy ? "Analyzing…" : currentStyle ? "Re-analyze" : "Analyze style"}
+        <Button
+          onClick={run}
+          disabled={busy}
+          className="h-9 font-bold text-xs gap-1.5 rounded-xl shadow-xs"
+        >
+          {busy ? <Loader2 className="size-3.5 animate-spin" /> : <Sparkles className="size-3.5" />}
+          <span>{busy ? "Analyzing Style…" : currentStyle ? "Re-analyze Style" : "Analyze Writing Style"}</span>
         </Button>
         {currentStyle && (
           <Button
             variant="outline"
+            size="sm"
             onClick={async () => {
               await clear();
               qc.invalidateQueries({ queryKey: ["profile"] });
               toast.success("Writing style cleared");
             }}
+            className="h-9 text-xs rounded-xl"
           >
-            <Trash2 className="mr-2 h-4 w-4" /> Clear
+            <Trash2 className="size-3.5 mr-1 text-muted-foreground" /> Clear Voice
           </Button>
         )}
       </div>
+
       {currentStyle && (
-        <div className="space-y-2 rounded-md border border-border p-3 text-sm">
-          <div className="text-sm text-foreground">
+        <div className="space-y-2.5 rounded-xl border border-primary/20 bg-primary/5 p-4 text-xs">
+          <div className="font-semibold text-foreground">
             <ReactMarkdown>{currentStyle.summary}</ReactMarkdown>
           </div>
-          <div className="flex flex-wrap gap-1">{currentStyle.tone.map((t, i) => <Badge key={i} variant="secondary">{t}</Badge>)}</div>
+          <div className="flex flex-wrap gap-1">
+            {currentStyle.tone.map((t, i) => (
+              <Badge key={i} variant="secondary" className="text-[10px]">
+                {t}
+              </Badge>
+            ))}
+          </div>
           {currentStyle.signature_moves.length > 0 && (
-            <div className="text-xs"><span className="font-medium">Signature moves:</span> {currentStyle.signature_moves.join(" · ")}</div>
-          )}
-          {currentStyle.avoids.length > 0 && (
-            <div className="text-xs text-muted-foreground"><span className="font-medium">Avoids:</span> {currentStyle.avoids.join(" · ")}</div>
+            <div className="text-[11px] text-muted-foreground">
+              <span className="font-semibold text-foreground">Signature moves:</span> {currentStyle.signature_moves.join(" • ")}
+            </div>
           )}
         </div>
       )}
@@ -137,13 +195,36 @@ function WritingStyleSection({ currentStyle }: { currentStyle: WritingStyle | nu
 }
 
 const RESET_SCOPES = [
-  { key: "jobs", label: "Saved jobs" },
-  { key: "applications", label: "Job applications" },
-  { key: "documents", label: "Uploaded documents" },
-  { key: "chunks", label: "Indexed knowledge chunks" },
-  { key: "review_queue", label: "Review queue" },
-  { key: "events", label: "Application events / history" },
-  { key: "profile_extras", label: "Targets & preferences (keeps your identity)" },
+  {
+    key: "jobs",
+    title: "Target Roles & JDs",
+    desc: "All saved target job descriptions and criteria.",
+    icon: Briefcase,
+  },
+  {
+    key: "resumes",
+    title: "Resumes & Checkpoints",
+    desc: "All tailored resumes, templates, and version history in Studio.",
+    icon: FileText,
+  },
+  {
+    key: "documents",
+    title: "Knowledge Hub Files",
+    desc: "All uploaded master resumes, certifications, and project notes.",
+    icon: BookOpen,
+  },
+  {
+    key: "chunks",
+    title: "Indexed Knowledge Chunks",
+    desc: "Vector embeddings and retrieval indices.",
+    icon: Layers,
+  },
+  {
+    key: "profile_extras",
+    title: "Preferences & Voice Profile",
+    desc: "Target roles, salary criteria, and writing style preferences.",
+    icon: Sliders,
+  },
 ] as const;
 
 type ResetScope = (typeof RESET_SCOPES)[number]["key"];
@@ -160,48 +241,133 @@ function DangerZone() {
   const toggle = (k: ResetScope) => setScopes((s) => ({ ...s, [k]: !s[k] }));
   const selected = (Object.keys(scopes) as ResetScope[]).filter((k) => scopes[k]);
 
+  const selectAll = () =>
+    setScopes(Object.fromEntries(RESET_SCOPES.map((s) => [s.key, true])) as Record<ResetScope, boolean>);
+
+  const clearAll = () =>
+    setScopes(Object.fromEntries(RESET_SCOPES.map((s) => [s.key, false])) as Record<ResetScope, boolean>);
+
   const run = async () => {
-    if (confirm !== "RESET") return toast.error('Type RESET to confirm');
-    if (selected.length === 0) return toast.error("Pick at least one scope");
+    if (confirm.trim().toUpperCase() !== "RESET") {
+      return toast.error('Please type "RESET" into the confirmation field.');
+    }
+    if (selected.length === 0) {
+      return toast.error("Please select at least one data category to reset.");
+    }
+
     setBusy(true);
+    const toastId = toast.loading("Purging selected workspace data...");
     try {
-      const res = await reset({ data: { confirm: "RESET", scopes: selected } });
-      toast.success("Workspace reset");
+      await reset({ data: { confirm: "RESET", scopes: selected } });
+      toast.success("Workspace reset successfully!", { id: toastId });
       qc.invalidateQueries();
       setConfirm("");
-      setScopes(Object.fromEntries(RESET_SCOPES.map((s) => [s.key, false])) as Record<ResetScope, boolean>);
-      console.info("reset counts", res.counts);
+      clearAll();
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed");
+      console.error(e);
+      toast.error(e instanceof Error ? e.message : "Reset failed", { id: toastId });
     } finally {
       setBusy(false);
     }
   };
 
   return (
-    <div className="mt-8 max-w-2xl space-y-4 rounded-xl border border-destructive/30 bg-destructive/5 p-6">
-      <div className="flex items-center gap-2">
-        <AlertTriangle className="h-4 w-4 text-destructive" />
-        <h2 className="text-lg font-medium text-destructive">Danger zone — reset workspace</h2>
+    <div className="space-y-6 rounded-2xl border border-destructive/30 bg-destructive/5 p-6 sm:p-8 shadow-xs">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 border-b border-destructive/20 pb-4">
+        <div className="space-y-1">
+          <div className="flex items-center gap-2 text-destructive">
+            <ShieldAlert className="size-5" />
+            <h2 className="font-display text-lg font-bold">Danger Zone — Reset Workspace Data</h2>
+          </div>
+          <p className="text-xs text-muted-foreground leading-relaxed">
+            Permanently wipe selected workspace data. Your account authentication and base profile identity will remain.
+          </p>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={selectAll}
+            className="text-[11px] font-semibold text-primary hover:underline"
+          >
+            Select All
+          </button>
+          <span className="text-muted-foreground text-xs">•</span>
+          <button
+            type="button"
+            onClick={clearAll}
+            className="text-[11px] font-semibold text-muted-foreground hover:text-foreground"
+          >
+            Clear All
+          </button>
+        </div>
       </div>
-      <p className="text-sm text-muted-foreground">
-        Permanently delete the selected data. Your account and profile identity remain. This cannot be undone.
-      </p>
-      <div className="grid gap-2 sm:grid-cols-2">
-        {RESET_SCOPES.map((s) => (
-          <label key={s.key} className="flex items-center gap-2 rounded-md border border-border bg-background p-2 text-sm">
-            <input type="checkbox" checked={scopes[s.key]} onChange={() => toggle(s.key)} />
-            {s.label}
-          </label>
-        ))}
+
+      {/* Selectable Scope Cards */}
+      <div className="grid gap-2.5 sm:grid-cols-2">
+        {RESET_SCOPES.map((s) => {
+          const isChecked = scopes[s.key];
+          const Icon = s.icon;
+          return (
+            <div
+              key={s.key}
+              onClick={() => toggle(s.key)}
+              className={cn(
+                "flex items-start gap-3 p-3.5 rounded-xl border cursor-pointer transition-all select-none",
+                isChecked
+                  ? "border-destructive/60 bg-destructive/10 text-foreground shadow-xs"
+                  : "border-border bg-card/80 hover:border-destructive/40 text-muted-foreground hover:text-foreground",
+              )}
+            >
+              <div
+                className={cn(
+                  "grid size-8 place-items-center rounded-lg shrink-0 transition-colors",
+                  isChecked ? "bg-destructive text-destructive-foreground" : "bg-secondary text-muted-foreground",
+                )}
+              >
+                <Icon className="size-4" />
+              </div>
+              <div className="min-w-0 flex-1 space-y-0.5">
+                <div className="font-semibold text-xs text-foreground flex items-center justify-between">
+                  <span>{s.title}</span>
+                  {isChecked && (
+                    <Badge variant="destructive" className="text-[9px] h-3.5 px-1 py-0 font-bold">
+                      Selected
+                    </Badge>
+                  )}
+                </div>
+                <p className="text-[11px] text-muted-foreground leading-snug">{s.desc}</p>
+              </div>
+            </div>
+          );
+        })}
       </div>
-      <div>
-        <Label htmlFor="confirm">Type RESET to confirm</Label>
-        <Input id="confirm" value={confirm} onChange={(e) => setConfirm(e.target.value)} placeholder="RESET" />
+
+      {/* Confirmation Input & Action Button */}
+      <div className="space-y-3 pt-2 border-t border-destructive/20">
+        <div className="space-y-1">
+          <Label htmlFor="reset-confirm" className="text-xs font-bold text-foreground">
+            Type <span className="font-mono text-destructive font-bold">RESET</span> to confirm permanent deletion:
+          </Label>
+          <Input
+            id="reset-confirm"
+            value={confirm}
+            onChange={(e) => setConfirm(e.target.value)}
+            placeholder="RESET"
+            className="h-9 text-xs font-mono uppercase rounded-xl bg-card border-destructive/30 focus:border-destructive"
+          />
+        </div>
+
+        <Button
+          variant="destructive"
+          onClick={run}
+          disabled={busy || confirm.trim().toUpperCase() !== "RESET" || selected.length === 0}
+          className="h-9 px-4 font-bold text-xs gap-2 rounded-xl shadow-xs transition-all"
+        >
+          {busy ? <Loader2 className="size-3.5 animate-spin" /> : <Trash2 className="size-3.5" />}
+          <span>{busy ? "Resetting Selected Data…" : `Reset Selected Data (${selected.length} scopes)`}</span>
+        </Button>
       </div>
-      <Button variant="destructive" onClick={run} disabled={busy || confirm !== "RESET" || selected.length === 0}>
-        <Trash2 className="mr-2 h-4 w-4" /> {busy ? "Resetting…" : "Reset selected data"}
-      </Button>
     </div>
   );
 }
@@ -213,10 +379,17 @@ function SettingsPage() {
   const { data } = useQuery({ queryKey: ["profile"], queryFn: () => get() });
 
   const [form, setForm] = useState({
-    full_name: "", headline: "", location: "", phone: "",
-    linkedin_url: "", portfolio_url: "", work_authorization: "",
-    target_roles_text: "", target_locations_text: "",
-    min_salary: "" as string | number, requires_sponsorship: false,
+    full_name: "",
+    headline: "",
+    location: "",
+    phone: "",
+    linkedin_url: "",
+    portfolio_url: "",
+    work_authorization: "",
+    target_roles_text: "",
+    target_locations_text: "",
+    min_salary: "" as string | number,
+    requires_sponsorship: false,
   });
 
   useEffect(() => {
