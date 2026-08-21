@@ -2,16 +2,17 @@ import { Link, useRouterState } from "@tanstack/react-router";
 import {
   Briefcase,
   LayoutDashboard,
-  Search,
   ClipboardCheck,
   FileText,
-  ShieldCheck,
   BarChart3,
   Settings,
   Upload,
   LogOut,
   Compass,
   Sparkles,
+  Mail,
+  Mic,
+  FolderOpen,
 } from "lucide-react";
 
 import {
@@ -32,25 +33,24 @@ import { useAuth } from "@/hooks/use-auth";
 import { useNavigate } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
 
-const discovery = [
-  { title: "Find jobs", url: "/jobs", icon: Search },
-  { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard },
-  { title: "Career discovery", url: "/career", icon: Compass },
-];
-
-const studio = [
+const corePillars = [
   { title: "Resume Studio", url: "/studio", icon: Sparkles },
-  { title: "Documents & Resumes", url: "/resumes", icon: FileText },
+  { title: "Cover Letter Maker", url: "/cover-letter", icon: Mail },
+  { title: "Interview Prep", url: "/interview", icon: Mic },
 ];
 
-const pipeline = [
-  { title: "Applications", url: "/applications", icon: ClipboardCheck },
+const workspace = [
+  { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard },
+  { title: "Target Roles & JDs", url: "/jobs", icon: Briefcase },
+  { title: "My Resumes & Docs", url: "/resumes", icon: FolderOpen },
+  { title: "Applications Tracker", url: "/applications", icon: ClipboardCheck },
+  { title: "Career Discovery", url: "/career", icon: Compass },
   { title: "Analytics", url: "/analytics", icon: BarChart3 },
 ];
 
-const library = [
-  { title: "Upload", url: "/upload", icon: Upload },
-  { title: "Settings", url: "/settings", icon: Settings },
+const account = [
+  { title: "Upload & Enrich", url: "/upload", icon: Upload },
+  { title: "Settings & Profile", url: "/settings", icon: Settings },
 ];
 
 export function AppSidebar() {
@@ -63,7 +63,7 @@ export function AppSidebar() {
 
   const isActive = (url: string) => pathname === url || pathname.startsWith(url + "/");
 
-  const renderGroup = (label: string, items: typeof discovery) => (
+  const renderGroup = (label: string, items: typeof corePillars) => (
     <SidebarGroup>
       {!collapsed && <SidebarGroupLabel>{label}</SidebarGroupLabel>}
       <SidebarGroupContent>
@@ -72,8 +72,8 @@ export function AppSidebar() {
             <SidebarMenuItem key={item.url}>
               <SidebarMenuButton asChild isActive={isActive(item.url)} tooltip={item.title}>
                 <Link to={item.url} className="flex items-center gap-2">
-                  <item.icon className="h-4 w-4" />
-                  <span>{item.title}</span>
+                  <item.icon className="h-4 w-4 shrink-0" />
+                  <span className="font-medium text-xs">{item.title}</span>
                 </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>
@@ -100,10 +100,9 @@ export function AppSidebar() {
         <SidebarTrigger className="shrink-0 text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent" />
       </SidebarHeader>
       <SidebarContent>
-        {renderGroup("Discover", discovery)}
-        {renderGroup("Resume Studio", studio)}
-        {renderGroup("Pipeline", pipeline)}
-        {renderGroup("Library", library)}
+        {renderGroup("AI Superpowers", corePillars)}
+        {renderGroup("Workspace", workspace)}
+        {renderGroup("Account", account)}
       </SidebarContent>
       <SidebarFooter>
         {!collapsed && user && (
@@ -120,8 +119,8 @@ export function AppSidebar() {
                 navigate({ to: "/", replace: true });
               }}
             >
-              <LogOut className="h-4 w-4" />
-              <span>Sign out</span>
+              <LogOut className="h-4 w-4 shrink-0" />
+              <span className="text-xs">Sign out</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>

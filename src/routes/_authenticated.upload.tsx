@@ -21,32 +21,45 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 export const Route = createFileRoute("/_authenticated/upload")({
-  head: () => ({ meta: [{ title: "Add a document or job — CareerOS" }] }),
+  head: () => ({ meta: [{ title: "Upload & Knowledge Hub — CareerOS" }] }),
   component: UploadPage,
 });
 
 function UploadPage() {
   return (
-    <div className="p-8">
-      <div className="mb-8">
-        <h1 className="text-3xl font-semibold tracking-tight">Add content</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          The more we know about you, the better every agent performs — matching, tailoring, interviews, all of it.
+    <div className="mx-auto max-w-5xl p-6 sm:p-10 space-y-8">
+      <div>
+        <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1 text-xs text-muted-foreground">
+          <Upload className="size-3.5 text-primary" /> Knowledge Hub & Enrichment
+        </div>
+        <h1 className="font-display text-3xl sm:text-4xl font-bold tracking-tight text-foreground">
+          Upload & Enrich Knowledge Hub
+        </h1>
+        <p className="mt-1 text-sm text-muted-foreground max-w-2xl leading-relaxed">
+          The richer your Knowledge Hub, the better the AI can ground your tailored resumes, cover letters, and interview coaching in verified facts.
         </p>
       </div>
 
-      <Tabs defaultValue="understand" className="max-w-3xl">
-        <TabsList className="flex flex-wrap">
-          <TabsTrigger value="understand"><MessageCircle className="mr-2 h-4 w-4" /> Understand me</TabsTrigger>
-          <TabsTrigger value="resume"><FileText className="mr-2 h-4 w-4" /> Resume / docs</TabsTrigger>
-          <TabsTrigger value="skills"><Award className="mr-2 h-4 w-4" /> Skills & certs</TabsTrigger>
-          <TabsTrigger value="profile"><Github className="mr-2 h-4 w-4" /> Import profile</TabsTrigger>
+      <Tabs defaultValue="resume" className="space-y-6">
+        <TabsList className="bg-secondary/50 rounded-xl p-1 border border-border/60">
+          <TabsTrigger value="resume" className="text-xs font-semibold rounded-lg gap-1.5">
+            <FileText className="size-3.5" /> Upload Resumes & Docs
+          </TabsTrigger>
+          <TabsTrigger value="understand" className="text-xs font-semibold rounded-lg gap-1.5">
+            <MessageCircle className="size-3.5" /> AI Candidate Interview
+          </TabsTrigger>
+          <TabsTrigger value="skills" className="text-xs font-semibold rounded-lg gap-1.5">
+            <Award className="size-3.5" /> Skills & Certifications
+          </TabsTrigger>
+          <TabsTrigger value="profile" className="text-xs font-semibold rounded-lg gap-1.5">
+            <Github className="size-3.5" /> Profile Sync
+          </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="understand"><UnderstandMe /></TabsContent>
-        <TabsContent value="resume"><ResumeUploader /></TabsContent>
-        <TabsContent value="skills"><SkillsAndCerts /></TabsContent>
-        <TabsContent value="profile"><ProfileImport /></TabsContent>
+        <TabsContent value="resume" className="mt-0"><ResumeUploader /></TabsContent>
+        <TabsContent value="understand" className="mt-0"><UnderstandMe /></TabsContent>
+        <TabsContent value="skills" className="mt-0"><SkillsAndCerts /></TabsContent>
+        <TabsContent value="profile" className="mt-0"><ProfileImport /></TabsContent>
       </Tabs>
     </div>
   );

@@ -1,944 +1,440 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
+import { useState } from "react";
 import { toast } from "sonner";
-import { useEffect, useMemo, useState } from "react";
 import {
-  Trash2,
-  ExternalLink,
+  Briefcase,
   Plus,
   Sparkles,
-  Wand2,
-  Link2,
-  Globe,
-  Filter,
-  X,
-  Loader2,
-  GraduationCap,
+  FileText,
+  Mail,
   Mic,
-  Sprout,
-  Zap,
-  MoreHorizontal,
-  Eye,
-  Terminal,
+  Trash2,
+  ExternalLink,
+  ChevronRight,
+  Loader2,
+  Building2,
+  MapPin,
+  Globe,
+  CheckCircle2,
   Copy,
-  Check,
+  Zap,
 } from "lucide-react";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { listJobs, deleteJob, ingestJobFromUrl } from "@/lib/jobs.functions";
-import { searchJobsWeb, importDiscoveredJob } from "@/lib/jobsearch.functions";
-import { rankAllJobs } from "@/lib/ranking.functions";
-import { listApplications } from "@/lib/applications.functions";
+import { listJobs, createJob, deleteJob, ingestJobFromUrl } from "@/lib/jobs.functions";
+import { rankJob, rankAllJobs } from "@/lib/ranking.functions";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
 import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { z } from "zod";
-
-const jobsSearchSchema = z.object({
-  q: z.string().optional(),
-  loc: z.string().optional(),
-  search: z.union([z.string(), z.boolean()]).optional(),
-});
+import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/_authenticated/jobs/")({
-  validateSearch: (search) => jobsSearchSchema.parse(search),
-  head: () => ({ meta: [{ title: "Jobs — CareerOS" }] }),
-  component: JobsPage,
+  head: () => ({ meta: [{ title: "Target Roles & JDs — CareerOS" }] }),
+  component: TargetJobsPage,
 });
 
-type SortKey = "rank" | "newest" | "oldest" | "title" | "company";
-type RemoteFilter = "any" | "remote" | "onsite";
-
-function SearchingOverlay({ query, location }: { query: string; location: string }) {
-  const target = `${query || "your target roles"}${location ? ` in ${location}` : ""}`;
-  const phases = useMemo(
-    () => [
-      `Querying public job feeds (Remotive, Arbeitnow, The Muse, Jobicy, RemoteOK)...`,
-      `Scanning company career pages & ATS boards for "${target}"...`,
-      `Structuring, deduplicating, and scoring roles against your criteria...`,
-      `Checking pipeline status & preparing results...`,
-    ],
-    [target],
-  );
-  const [i, setI] = useState(0);
-  useEffect(() => {
-    const t = setInterval(() => setI((x) => (x + 1) % phases.length), 1600);
-    return () => clearInterval(t);
-  }, [phases.length]);
-
-  return (
-    <div className="mt-3 flex items-center gap-3 rounded-lg border border-primary/30 bg-background/60 px-3 py-2 text-sm">
-      <Loader2 className="h-4 w-4 shrink-0 animate-spin text-primary" />
-      <span key={i} className="truncate text-muted-foreground animate-fade-in">
-        {phases[i]}
-      </span>
-    </div>
-  );
-}
-
-function JobsPage() {
+function TargetJobsPage() {
   const qc = useQueryClient();
-  const searchParams = Route.useSearch();
-  const fn = useServerFn(listJobs);
-  const del = useServerFn(deleteJob);
-  const rankAll = useServerFn(rankAllJobs);
-  const ingest = useServerFn(ingestJobFromUrl);
-  const search = useServerFn(searchJobsWeb);
-  const importJobFn = useServerFn(importDiscoveredJob);
-  const appsFn = useServerFn(listApplications);
-  const { data, isLoading } = useQuery({ queryKey: ["jobs"], queryFn: () => fn() });
-  const apps = useQuery({ queryKey: ["applications"], queryFn: () => appsFn() });
+  const listJobsFn = useServerFn(listJobs);
+  const createJobFn = useServerFn(createJob);
+  const deleteJobFn = useServerFn(deleteJob);
+  const ingestJobFn = useServerFn(ingestJobFromUrl);
+  const rankJobFn = useServerFn(rankJob);
+  const rankAllFn = useServerFn(rankAllJobs);
 
-  const [url, setUrl] = useState("");
-  const [rawText, setRawText] = useState("");
-  const [showPaste, setShowPaste] = useState(false);
-  const [ingesting, setIngesting] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [addModalOpen, setAddModalOpen] = useState(false);
+  const [addMode, setAddMode] = useState<"paste" | "url">("paste");
 
-  const [searchQ, setSearchQ] = useState("");
-  const [searchLoc, setSearchLoc] = useState("India");
-  const [remoteOnly, setRemoteOnly] = useState(false);
-  const [searchMode, setSearchMode] = useState<"any" | "entry_level">("entry_level");
-  const [searching, setSearching] = useState(false);
-  const [cdpDialogOpen, setCdpDialogOpen] = useState(false);
-  const [copiedCmd, setCopiedCmd] = useState(false);
-  const [discoveredJobs, setDiscoveredJobs] = useState<any[] | null>(null);
-  const [searchMeta, setSearchMeta] = useState<{
-    queriedAggregators?: boolean;
-    tavilyEnabled?: boolean;
-    sources?: string[];
-    totalDiscovered?: number;
-  } | null>(null);
-  const [importingJobUrl, setImportingJobUrl] = useState<string | null>(null);
-  const [importingAll, setImportingAll] = useState(false);
+  // New Job Form State
+  const [title, setTitle] = useState("");
+  const [company, setCompany] = useState("");
+  const [location, setLocation] = useState("");
+  const [description, setDescription] = useState("");
+  const [sourceUrl, setSourceUrl] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isScoringAll, setIsScoringAll] = useState(false);
 
-  // Load state from sessionStorage on mount
-  useEffect(() => {
+  const { data: jobs = [], isLoading } = useQuery({
+    queryKey: ["jobs"],
+    queryFn: () => listJobsFn(),
+  });
+
+  const handleAddJob = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSubmitting(true);
+    const toastId = toast.loading("Saving target job description...");
     try {
-      const qVal = sessionStorage.getItem("career_os_search_q");
-      const locVal = sessionStorage.getItem("career_os_search_loc");
-      const jobsVal = sessionStorage.getItem("career_os_discovered_jobs");
-      const metaVal = sessionStorage.getItem("career_os_search_meta");
-      if (qVal) setSearchQ(qVal);
-      if (locVal) setSearchLoc(locVal);
-      if (jobsVal) setDiscoveredJobs(JSON.parse(jobsVal));
-      if (metaVal) setSearchMeta(JSON.parse(metaVal));
-    } catch (e) {
-      console.error("Failed to load sessionStorage state", e);
-    }
-  }, []);
-
-  // Update sessionStorage when state changes
-  useEffect(() => {
-    try {
-      if (searchQ) sessionStorage.setItem("career_os_search_q", searchQ);
-      else sessionStorage.removeItem("career_os_search_q");
-    } catch {}
-  }, [searchQ]);
-
-  useEffect(() => {
-    try {
-      if (searchLoc) sessionStorage.setItem("career_os_search_loc", searchLoc);
-      else sessionStorage.removeItem("career_os_search_loc");
-    } catch {}
-  }, [searchLoc]);
-
-  useEffect(() => {
-    try {
-      if (discoveredJobs) {
-        sessionStorage.setItem("career_os_discovered_jobs", JSON.stringify(discoveredJobs));
+      if (addMode === "url" && sourceUrl.trim()) {
+        await ingestJobFn({ data: { url: sourceUrl.trim() } });
       } else {
-        sessionStorage.removeItem("career_os_discovered_jobs");
-      }
-      if (searchMeta) {
-        sessionStorage.setItem("career_os_search_meta", JSON.stringify(searchMeta));
-      } else {
-        sessionStorage.removeItem("career_os_search_meta");
-      }
-    } catch {}
-  }, [discoveredJobs, searchMeta]);
-
-  // Trigger search if routed with params (overwrites sessionStorage)
-  useEffect(() => {
-    if (searchParams.q) {
-      setSearchQ(searchParams.q);
-    }
-    if (searchParams.loc) {
-      setSearchLoc(searchParams.loc);
-    }
-    if (searchParams.search) {
-      const runSearch = async () => {
-        setSearching(true);
-        setDiscoveredJobs(null);
-        try {
-          const res = await search({
-            data: {
-              query: searchParams.q || undefined,
-              location: searchParams.loc || undefined,
-              remoteOnly: false,
-              mode: "any",
-              limit: 40,
-            },
-          });
-          if (res.error) {
-            toast.error(res.error);
-            return;
-          }
-          if (res.success && res.jobs) {
-            setDiscoveredJobs(res.jobs);
-            setSearchMeta(res.sourceMeta ?? null);
-            if (res.jobs.length === 0) {
-              toast.info("No matching jobs found. Try adjusting keywords or location.");
-            } else {
-              toast.success(`Found ${res.jobs.length} active jobs!`);
-            }
-          }
-        } catch (e) {
-          toast.error(e instanceof Error ? e.message : "Search failed");
-        } finally {
-          setSearching(false);
+        if (!title.trim() || !company.trim()) {
+          toast.error("Please provide both a job title and company name.", { id: toastId });
+          setIsSubmitting(false);
+          return;
         }
-      };
-      runSearch();
-    }
-  }, [searchParams.q, searchParams.loc, searchParams.search]);
-
-  // Filters
-  const [showFilters, setShowFilters] = useState(false);
-  const [filterText, setFilterText] = useState("");
-  const [filterLoc, setFilterLoc] = useState("");
-  const [filterRemote, setFilterRemote] = useState<RemoteFilter>("any");
-  const [filterType, setFilterType] = useState<string>("any");
-  const [minMatch, setMinMatch] = useState<string>("");
-  const [sortBy, setSortBy] = useState<SortKey>("rank");
-
-  const scoreMap = useMemo(
-    () => new Map((apps.data ?? []).map((a) => [a.job_id, { score: a.match_score, status: a.status }])),
-    [apps.data],
-  );
-
-  const filteredJobs = useMemo(() => {
-    let rows = data ?? [];
-    const q = filterText.trim().toLowerCase();
-    const loc = filterLoc.trim().toLowerCase();
-    if (q) rows = rows.filter((j) => `${j.title} ${j.company}`.toLowerCase().includes(q));
-    if (loc) rows = rows.filter((j) => (j.location ?? "").toLowerCase().includes(loc));
-    if (filterRemote === "remote") rows = rows.filter((j) => j.remote);
-    if (filterRemote === "onsite") rows = rows.filter((j) => !j.remote);
-    if (filterType !== "any") rows = rows.filter((j) => j.employment_type === filterType);
-    const minPct = Number(minMatch);
-    if (!Number.isNaN(minPct) && minMatch !== "") {
-      rows = rows.filter((j) => {
-        const s = scoreMap.get(j.id)?.score;
-        return s != null && Math.round(Number(s) * 100) >= minPct;
-      });
-    }
-    const sorted = [...rows];
-    sorted.sort((a, b) => {
-      if (sortBy === "rank") {
-        const sa = Number(scoreMap.get(a.id)?.score ?? -1);
-        const sb = Number(scoreMap.get(b.id)?.score ?? -1);
-        return sb - sa;
-      }
-      if (sortBy === "newest") return +new Date(b.created_at) - +new Date(a.created_at);
-      if (sortBy === "oldest") return +new Date(a.created_at) - +new Date(b.created_at);
-      if (sortBy === "title") return a.title.localeCompare(b.title);
-      if (sortBy === "company") return a.company.localeCompare(b.company);
-      return 0;
-    });
-    return sorted;
-  }, [data, scoreMap, filterText, filterLoc, filterRemote, filterType, minMatch, sortBy]);
-
-  const activeFilterCount =
-    (filterText ? 1 : 0) +
-    (filterLoc ? 1 : 0) +
-    (filterRemote !== "any" ? 1 : 0) +
-    (filterType !== "any" ? 1 : 0) +
-    (minMatch !== "" ? 1 : 0);
-
-  const clearFilters = () => {
-    setFilterText("");
-    setFilterLoc("");
-    setFilterRemote("any");
-    setFilterType("any");
-    setMinMatch("");
-  };
-
-  const handleDelete = async (id: string) => {
-    await del({ data: { id } });
-    toast.success("Job removed");
-    qc.invalidateQueries({ queryKey: ["jobs"] });
-  };
-
-  const handleRankAll = async () => {
-    toast.info("Ranking all jobs…");
-    try {
-      const res = await rankAll();
-      toast.success(`Scored ${res.scored} jobs`);
-      qc.invalidateQueries({ queryKey: ["applications"] });
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed");
-    }
-  };
-
-  const handleIngest = async () => {
-    const u = url.trim();
-    const t = rawText.trim();
-    if (!u && t.length < 50) {
-      toast.error("Enter a URL or paste the job description.");
-      return;
-    }
-    setIngesting(true);
-    try {
-      await ingest({ data: { url: u || undefined, rawText: t || undefined } });
-      toast.success("Job imported");
-      setUrl("");
-      setRawText("");
-      setShowPaste(false);
-      qc.invalidateQueries({ queryKey: ["jobs"] });
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed to import");
-    } finally {
-      setIngesting(false);
-    }
-  };
-
-  const handleWebSearch = async () => {
-    setSearching(true);
-    setDiscoveredJobs(null);
-    try {
-      const res = await search({
-        data: {
-          query: searchQ.trim() || undefined,
-          location: searchLoc.trim() || undefined,
-          remoteOnly,
-          mode: searchMode,
-          limit: 40,
-        },
-      });
-      if (res.error) {
-        toast.error(res.error);
-        return;
-      }
-      if (res.success && res.jobs) {
-        setDiscoveredJobs(res.jobs);
-        setSearchMeta(res.sourceMeta ?? null);
-        if (res.jobs.length === 0) {
-          toast.info("No matching jobs found. Try adjusting keywords or location.");
-        } else {
-          toast.success(`Found ${res.jobs.length} active jobs!`);
-        }
-      }
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Search failed");
-    } finally {
-      setSearching(false);
-    }
-  };
-
-  const handleImportJob = async (job: any) => {
-    setImportingJobUrl(job.url);
-    try {
-      const res = await importJobFn({
-        data: {
-          title: job.title,
-          company: job.company,
-          location: job.location,
-          remote: job.remote,
-          url: job.url,
-          description: job.description,
-        },
-      });
-      if (res.alreadyExists) {
-        toast.info(`${job.title} at ${job.company} is already in your pipeline.`);
-      } else {
-        toast.success(`Added ${job.title} to pipeline`);
-      }
-      // Update local status so UI changes to "Added"
-      setDiscoveredJobs((prev) =>
-        prev
-          ? prev.map((j) => (j.url === job.url ? { ...j, alreadyInPipeline: true } : j))
-          : null
-      );
-      qc.invalidateQueries({ queryKey: ["jobs"] });
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed to import job");
-    } finally {
-      setImportingJobUrl(null);
-    }
-  };
-
-  const handleImportAll = async () => {
-    if (!discoveredJobs || discoveredJobs.length === 0) return;
-    const toImport = discoveredJobs.filter((j) => !j.alreadyInPipeline);
-    if (toImport.length === 0) {
-      toast.info("All discovered jobs are already in your pipeline.");
-      return;
-    }
-    setImportingAll(true);
-    let count = 0;
-    try {
-      for (const job of toImport) {
-        await importJobFn({
+        await createJobFn({
           data: {
-            title: job.title,
-            company: job.company,
-            location: job.location,
-            remote: job.remote,
-            url: job.url,
-            description: job.description,
+            title: title.trim(),
+            company: company.trim(),
+            location: location.trim() || undefined,
+            description: description.trim() || undefined,
+            source_url: sourceUrl.trim() || undefined,
           },
         });
-        count++;
       }
-      toast.success(`Imported ${count} new jobs to your pipeline!`);
-      setDiscoveredJobs((prev) =>
-        prev ? prev.map((j) => ({ ...j, alreadyInPipeline: true })) : null
-      );
-      qc.invalidateQueries({ queryKey: ["jobs"] });
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed to import some jobs");
+
+      toast.success("Target job added successfully!", { id: toastId });
+      setAddModalOpen(false);
+      setTitle("");
+      setCompany("");
+      setLocation("");
+      setDescription("");
+      setSourceUrl("");
+      void qc.invalidateQueries({ queryKey: ["jobs"] });
+    } catch (err) {
+      console.error(err);
+      toast.error(err instanceof Error ? err.message : "Failed to add job", { id: toastId });
     } finally {
-      setImportingAll(false);
+      setIsSubmitting(false);
     }
   };
 
+  const handleDeleteJob = async (id: string, name: string) => {
+    if (!confirm(`Are you sure you want to remove ${name}?`)) return;
+    try {
+      await deleteJobFn({ data: { id } });
+      toast.success("Target job removed");
+      void qc.invalidateQueries({ queryKey: ["jobs"] });
+    } catch {
+      toast.error("Failed to remove job");
+    }
+  };
+
+  const handleScoreAll = async () => {
+    setIsScoringAll(true);
+    const toastId = toast.loading("Calculating ATS match scores across all roles...");
+    try {
+      const res = await rankAllFn();
+      toast.success(`Scored ${res.scored} target roles against your resume!`, { id: toastId });
+      void qc.invalidateQueries({ queryKey: ["jobs"] });
+      void qc.invalidateQueries({ queryKey: ["applications"] });
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Scoring failed", { id: toastId });
+    } finally {
+      setIsScoringAll(false);
+    }
+  };
+
+  const filteredJobs = jobs.filter((j) => {
+    const q = searchQuery.toLowerCase();
+    return j.title.toLowerCase().includes(q) || j.company.toLowerCase().includes(q) || (j.location ?? "").toLowerCase().includes(q);
+  });
+
   return (
-    <div className="p-8">
-      <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
+    <div className="mx-auto max-w-7xl p-6 sm:p-10 space-y-8">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-semibold tracking-tight">Jobs</h1>
-          <p className="mt-1 text-sm text-muted-foreground">All discovered opportunities, ranked against your profile.</p>
+          <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1 text-xs text-muted-foreground">
+            <Briefcase className="size-3.5 text-primary" /> Target Roles & JDs
+          </div>
+          <h1 className="font-display text-3xl font-bold tracking-tight text-foreground">
+            Target Job Descriptions
+          </h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Attach job descriptions to tailor resumes, craft bespoke cover letters, and run mock interview drills.
+          </p>
         </div>
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={handleRankAll}><Wand2 className="mr-2 h-4 w-4" /> Rank all</Button>
-          <Button asChild><Link to="/upload"><Plus className="mr-2 h-4 w-4" /> Add manually</Link></Button>
+
+        <div className="flex items-center gap-2.5">
+          {jobs.length > 1 && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleScoreAll}
+              disabled={isScoringAll}
+              className="h-9 font-semibold text-xs gap-1.5 rounded-xl"
+            >
+              {isScoringAll ? <Loader2 className="size-3.5 animate-spin" /> : <Zap className="size-3.5 text-primary" />}
+              <span>Score All Matches</span>
+            </Button>
+          )}
+          <Button
+            size="sm"
+            onClick={() => setAddModalOpen(true)}
+            className="h-9 font-bold text-xs gap-1.5 rounded-xl shadow-sm"
+          >
+            <Plus className="size-4" />
+            <span>Add Target Job</span>
+          </Button>
         </div>
       </div>
 
-      <div className="mb-6 rounded-xl border border-border bg-gradient-to-br from-primary/5 to-card p-4">
-        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-          <div className="flex items-center gap-2 text-sm font-medium">
-            <Globe className="h-4 w-4 text-primary" /> Find jobs on the web
-          </div>
-          <div className="inline-flex rounded-lg border border-border bg-background p-0.5 text-xs">
-            <button
-              type="button"
-              onClick={() => setSearchMode("entry_level")}
-              disabled={searching}
-              className={`inline-flex items-center gap-1 rounded-md px-3 py-1.5 transition ${searchMode === "entry_level" ? "bg-primary text-primary-foreground font-medium" : "text-muted-foreground hover:text-foreground"}`}
-            >
-              <Sprout className="h-3 w-3" /> 🇮🇳 Fresher Jobs (0-2 Yrs)
-            </button>
-            <button
-              type="button"
-              onClick={() => setSearchMode("any")}
-              disabled={searching}
-              className={`inline-flex items-center gap-1 rounded-md px-3 py-1.5 transition ${searchMode === "any" ? "bg-primary text-primary-foreground font-medium" : "text-muted-foreground hover:text-foreground"}`}
-            >
-              <Globe className="h-3 w-3" /> All roles
-            </button>
-            <button
-              type="button"
-              onClick={() => setCdpDialogOpen(true)}
-              className="inline-flex items-center gap-1 rounded-md px-3 py-1.5 text-primary hover:bg-primary/10 transition font-medium"
-            >
-              <Sparkles className="h-3 w-3" /> Chrome Agent Crawler
-            </button>
-          </div>
-        </div>
-        <div className="grid gap-2 sm:grid-cols-[1fr_1fr_auto]">
+      {/* Search Filter */}
+      {jobs.length > 0 && (
+        <div className="flex items-center gap-3">
           <Input
-            placeholder="Role or keywords (e.g. Python Fresher, Full Stack)"
-            value={searchQ}
-            onChange={(e) => setSearchQ(e.target.value)}
-            disabled={searching}
+            placeholder="Search target roles by title, company, or location..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="max-w-md h-9 text-xs rounded-xl bg-card"
           />
-          <Input
-            placeholder="Location (e.g. India, Bengaluru, Hyderabad)"
-            value={searchLoc}
-            onChange={(e) => setSearchLoc(e.target.value)}
-            disabled={searching}
-          />
-          <Button onClick={handleWebSearch} disabled={searching}>
-            {searching ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
-            {searching ? "Searching…" : "Search jobs"}
-          </Button>
+          <span className="text-xs text-muted-foreground font-medium">
+            Showing {filteredJobs.length} of {jobs.length} target roles
+          </span>
         </div>
+      )}
 
-        {/* Quick Indian Tech Hub Chips */}
-        <div className="mt-3 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
-          <span className="font-medium text-foreground mr-1">India Hubs:</span>
-          {["India", "Bengaluru", "Hyderabad", "Pune", "Delhi / NCR", "Mumbai", "Chennai", "Noida", "Gurgaon"].map((c) => (
-            <button
-              key={c}
-              type="button"
-              onClick={() => setSearchLoc(c)}
-              className={`rounded-md px-2 py-0.5 transition border ${
-                searchLoc.toLowerCase() === c.toLowerCase()
-                  ? "border-primary/50 bg-primary/10 text-primary font-medium"
-                  : "border-border bg-background/50 hover:bg-secondary text-muted-foreground"
-              }`}
-            >
-              {c}
-            </button>
+      {/* Grid of Jobs */}
+      {isLoading ? (
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="h-48 rounded-2xl border border-border bg-card animate-pulse" />
           ))}
         </div>
-
-        <label className="mt-2.5 flex items-center gap-2 text-xs text-muted-foreground">
-          <input
-            type="checkbox"
-            checked={remoteOnly}
-            onChange={(e) => setRemoteOnly(e.target.checked)}
-            disabled={searching}
-          />
-          Remote within India only
-        </label>
-        {searching && <SearchingOverlay query={searchQ} location={searchLoc} />}
-      </div>
-
-      {discoveredJobs && (
-        <div className="mb-8 rounded-xl border border-border bg-card/45 p-6 backdrop-blur-sm shadow-lift animate-fade-in">
-          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h2 className="font-display text-xl font-semibold flex items-center gap-2">
-                <Sparkles className="h-5 w-5 text-accent animate-pulse" />
-                Discovered Jobs ({discoveredJobs.length})
-              </h2>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                {discoveredJobs.length > 0
-                  ? "Real-time opportunities aggregated from public job feeds & web career boards."
-                  : "No opportunities matched your exact search query."}
-              </p>
-            </div>
-            <div className="flex items-center gap-2">
-              {discoveredJobs.length > 0 && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleImportAll}
-                  disabled={importingAll || discoveredJobs.every((j) => j.alreadyInPipeline)}
-                >
-                  {importingAll ? (
-                    <>
-                      <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-                      Importing...
-                    </>
-                  ) : (
-                    <>
-                      <Plus className="mr-1.5 h-3.5 w-3.5" />
-                      Import All
-                    </>
-                  )}
-                </Button>
-              )}
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8 text-muted-foreground hover:text-foreground"
-                onClick={() => {
-                  setDiscoveredJobs(null);
-                  setSearchMeta(null);
-                }}
-                title="Dismiss search results"
-              >
-                <X className="h-4 w-4" />
-              </Button>
-            </div>
+      ) : filteredJobs.length === 0 ? (
+        <div className="rounded-3xl border border-dashed border-border bg-card/40 p-12 text-center space-y-4">
+          <div className="mx-auto grid size-14 place-items-center rounded-3xl bg-primary/10 text-primary">
+            <Briefcase className="size-7" />
           </div>
-
-          {searchMeta?.sources && searchMeta.sources.length > 0 && (
-            <div className="mb-4 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
-              <span className="font-medium">Sources:</span>
-              {searchMeta.sources.map((s) => (
-                <span key={s} className="rounded-md bg-muted px-2 py-0.5 text-[11px] font-medium text-foreground">
-                  {s}
-                </span>
-              ))}
-              {!searchMeta.tavilyEnabled && (
-                <span className="ml-1 text-[11px] text-muted-foreground/80">
-                  (Free public feeds · add <code className="text-[10px] bg-muted px-1 py-0.5 rounded">TAVILY_API_KEY</code> for deep ATS/portal search)
-                </span>
-              )}
-            </div>
-          )}
-
-          {discoveredJobs.length === 0 ? (
-            <div className="rounded-lg border border-dashed border-border/80 p-8 text-center">
-              <p className="text-sm font-medium text-foreground">No matching jobs found</p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Try searching for a broader role (e.g. &ldquo;Developer&rdquo;, &ldquo;Engineer&rdquo;), clearing the location filter, or toggling remote/entry-level modes.
-              </p>
-            </div>
-          ) : (
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {discoveredJobs.map((job) => {
-                const getSourceBadge = (source: string) => {
-                  const src = source.toLowerCase();
-                  if (src === "remotive") return "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20";
-                  if (src === "arbeitnow") return "bg-teal-500/10 text-teal-600 dark:text-teal-400 border-teal-500/20";
-                  if (src === "the muse") return "bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-500/20";
-                  if (src === "jobicy") return "bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 border-cyan-500/20";
-                  if (src === "remoteok") return "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20";
-                  if (src === "greenhouse" || src === "lever" || src === "ashby" || src === "workday" || src === "smartrecruiters")
-                    return "bg-violet-500/10 text-violet-600 dark:text-violet-400 border-violet-500/20";
-                  if (src === "linkedin") return "bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20";
-                  if (src === "naukri") return "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20";
-                  if (src === "instahyre" || src === "cutshort" || src === "hirist")
-                    return "bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20";
-                  if (src === "indeed") return "bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-500/20";
-                  return "bg-primary/10 text-primary border-primary/20";
-                };
-
-                return (
-                  <div
-                    key={job.url}
-                    className="flex flex-col justify-between rounded-xl border border-border bg-card/60 p-4 transition-all duration-300 hover:-translate-y-1 hover:border-primary/20 hover:shadow-lift"
-                  >
-                    <div>
-                      <div className="mb-2 flex items-start justify-between gap-2">
-                        <Badge className={getSourceBadge(job.source)} variant="outline">
-                          {job.source}
-                        </Badge>
-                        {job.remote && (
-                          <Badge className="bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/20" variant="outline">
-                            Remote
-                          </Badge>
-                        )}
-                      </div>
-                      <h3 className="font-display font-medium leading-snug line-clamp-1 text-foreground" title={job.title}>
-                        {job.title}
-                      </h3>
-                      <p className="text-xs text-muted-foreground font-medium mb-2">{job.company}</p>
-                      {job.location && (
-                        <div className="mb-3 flex items-center gap-1 text-[11px] text-muted-foreground">
-                          <span className="shrink-0">📍</span>
-                          <span className="truncate">{job.location}</span>
-                        </div>
-                      )}
-                      <p className="mb-4 text-xs text-muted-foreground line-clamp-3 leading-relaxed">
-                        {job.description}
-                      </p>
-                    </div>
-                    <div className="flex gap-2 border-t border-border/55 pt-3">
-                      <Button
-                        className="flex-1 text-xs"
-                        size="sm"
-                        variant={job.alreadyInPipeline ? "secondary" : "default"}
-                        onClick={() => handleImportJob(job)}
-                        disabled={job.alreadyInPipeline || importingJobUrl === job.url}
-                      >
-                        {importingJobUrl === job.url ? (
-                          <Loader2 className="mr-1.5 h-3 w-3 animate-spin" />
-                        ) : job.alreadyInPipeline ? (
-                          "✓ Added"
-                        ) : (
-                          "Add to Pipeline"
-                        )}
-                      </Button>
-                      <a
-                        href={job.url}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="inline-flex items-center justify-center rounded-md border border-input bg-background p-2 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-                        title="View original posting"
-                      >
-                        <ExternalLink className="h-3.5 w-3.5" />
-                      </a>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      )}
-
-      <div className="mb-8 rounded-xl border border-border bg-card p-4">
-        <div className="mb-2 flex items-center gap-2 text-sm font-medium">
-          <Link2 className="h-4 w-4 text-primary" /> Import from URL
-        </div>
-        <div className="flex flex-col gap-2 sm:flex-row">
-          <Input
-            type="url"
-            placeholder="https://company.com/careers/role"
-            value={url}
-            onChange={(e) => setUrl(e.target.value)}
-            disabled={ingesting}
-            onKeyDown={(e) => { if (e.key === "Enter") handleIngest(); }}
-          />
-          <Button onClick={handleIngest} disabled={ingesting || (!url.trim() && rawText.trim().length < 50)}>
-            <Sparkles className="mr-2 h-4 w-4" /> {ingesting ? "Parsing…" : "Import"}
+          <div className="space-y-1 max-w-sm mx-auto">
+            <h3 className="font-display text-lg font-bold">No Target Roles Yet</h3>
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              Add the job description of any role you're applying for to instantly generate tailored resumes, cover letters, and interview coaching.
+            </p>
+          </div>
+          <Button onClick={() => setAddModalOpen(true)} className="font-semibold text-xs rounded-xl">
+            <Plus className="size-4 mr-1.5" /> Add Your First Target Job
           </Button>
         </div>
-        {showPaste && (
-          <Textarea
-            className="mt-2"
-            rows={6}
-            placeholder="Paste the full job description here if the URL is blocked…"
-            value={rawText}
-            onChange={(e) => setRawText(e.target.value)}
-            disabled={ingesting}
-          />
-        )}
-        <div className="mt-2 flex items-center justify-between">
-          <p className="text-xs text-muted-foreground">
-            We fetch the page server-side and use AI to extract the details. Some sites block bots — paste the text instead.
-          </p>
-          <button type="button" className="text-xs text-primary hover:underline" onClick={() => setShowPaste((s) => !s)}>
-            {showPaste ? "Hide paste" : "Paste description instead"}
-          </button>
-        </div>
-      </div>
-
-      {/* Filter + sort toolbar */}
-      <div className="mb-4 flex flex-wrap items-center gap-2">
-        <Button variant={showFilters ? "default" : "outline"} size="sm" onClick={() => setShowFilters((s) => !s)}>
-          <Filter className="mr-2 h-4 w-4" /> Filters
-          {activeFilterCount > 0 && <Badge className="ml-2" variant="secondary">{activeFilterCount}</Badge>}
-        </Button>
-        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-          <span>Sort by</span>
-          <Select value={sortBy} onValueChange={(v) => setSortBy(v as SortKey)}>
-            <SelectTrigger className="h-8 w-[150px]"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="rank">Match rank</SelectItem>
-              <SelectItem value="newest">Newest</SelectItem>
-              <SelectItem value="oldest">Oldest</SelectItem>
-              <SelectItem value="title">Title (A→Z)</SelectItem>
-              <SelectItem value="company">Company (A→Z)</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-        <span className="ml-auto text-xs text-muted-foreground">
-          {filteredJobs.length} of {data?.length ?? 0} jobs
-        </span>
-      </div>
-
-      {showFilters && (
-        <div className="mb-4 grid gap-3 rounded-xl border border-border bg-card p-4 animate-fade-in sm:grid-cols-2 lg:grid-cols-5">
-          <div>
-            <Label className="text-xs">Title / company</Label>
-            <Input className="mt-1" placeholder="e.g. backend, Stripe" value={filterText} onChange={(e) => setFilterText(e.target.value)} />
-          </div>
-          <div>
-            <Label className="text-xs">Location</Label>
-            <Input className="mt-1" placeholder="e.g. Berlin, NYC" value={filterLoc} onChange={(e) => setFilterLoc(e.target.value)} />
-          </div>
-          <div>
-            <Label className="text-xs">Remote</Label>
-            <Select value={filterRemote} onValueChange={(v) => setFilterRemote(v as RemoteFilter)}>
-              <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="any">Any</SelectItem>
-                <SelectItem value="remote">Remote only</SelectItem>
-                <SelectItem value="onsite">On-site only</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div>
-            <Label className="text-xs">Type</Label>
-            <Select value={filterType} onValueChange={setFilterType}>
-              <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="any">Any</SelectItem>
-                <SelectItem value="full_time">Full-time</SelectItem>
-                <SelectItem value="part_time">Part-time</SelectItem>
-                <SelectItem value="contract">Contract</SelectItem>
-                <SelectItem value="internship">Internship</SelectItem>
-                <SelectItem value="temporary">Temporary</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div>
-            <Label className="text-xs">Min match %</Label>
-            <Input className="mt-1" inputMode="numeric" placeholder="e.g. 60" value={minMatch} onChange={(e) => setMinMatch(e.target.value.replace(/[^\d]/g, "").slice(0, 3))} />
-          </div>
-          <div className="sm:col-span-2 lg:col-span-5 flex justify-end">
-            <Button variant="ghost" size="sm" onClick={clearFilters} disabled={activeFilterCount === 0}>
-              <X className="mr-1 h-3 w-3" /> Clear filters
-            </Button>
-          </div>
-        </div>
-      )}
-
-      {isLoading ? (
-        <p className="text-sm text-muted-foreground">Loading…</p>
-      ) : filteredJobs.length > 0 ? (
-        <div className="overflow-hidden rounded-xl border border-border bg-card">
-          <table className="w-full text-sm">
-            <thead className="border-b border-border bg-muted/30 text-left text-xs uppercase text-muted-foreground">
-              <tr>
-                <th className="px-4 py-3 font-medium">Match</th>
-                <th className="px-4 py-3 font-medium">Title</th>
-                <th className="px-4 py-3 font-medium">Company</th>
-                <th className="px-4 py-3 font-medium">Location</th>
-                <th className="px-4 py-3 font-medium">Status</th>
-                <th className="px-4 py-3" />
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {filteredJobs.map((j) => {
-                const meta = scoreMap.get(j.id);
-                const pct = meta?.score != null ? Math.round(Number(meta.score) * 100) : null;
-                return (
-                  <tr key={j.id} className="hover:bg-muted/30">
-                    <td className="px-4 py-3">
-                      {pct == null ? (
-                        <span className="text-xs text-muted-foreground">—</span>
-                      ) : (
-                        <Badge variant={pct >= 75 ? "default" : pct >= 50 ? "secondary" : "outline"}>{pct}%</Badge>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 font-medium">
-                      <Link to="/jobs/$jobId" params={{ jobId: j.id }} className="hover:underline">{j.title}</Link>
-                    </td>
-                    <td className="px-4 py-3 text-muted-foreground">{j.company}</td>
-                    <td className="px-4 py-3 text-muted-foreground">{j.remote ? "Remote" : j.location || "—"}</td>
-                    <td className="px-4 py-3 text-muted-foreground">
-                      {meta?.status ? <Badge variant="outline">{meta.status}</Badge> : <span className="text-xs">—</span>}
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      <div className="inline-flex items-center gap-1">
-                        {j.source_url && (
-                          <a
-                            href={j.source_url}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="rounded-md p-2 hover:bg-muted"
-                            title="Original posting"
-                          >
-                            <ExternalLink className="h-4 w-4" />
-                          </a>
-                        )}
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="sm" title="More actions">
-                              <MoreHorizontal className="h-4 w-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end" className="w-48">
-                            <DropdownMenuItem asChild>
-                              <Link to="/jobs/$jobId" params={{ jobId: j.id }}>
-                                <Eye className="mr-2 h-4 w-4" /> Open details
-                              </Link>
-                            </DropdownMenuItem>
-                            <DropdownMenuItem asChild>
-                              <Link to="/jobs/$jobId" params={{ jobId: j.id }} hash="upskill">
-                                <GraduationCap className="mr-2 h-4 w-4" /> Upskill plan
-                              </Link>
-                            </DropdownMenuItem>
-                            <DropdownMenuItem asChild>
-                              <Link to="/jobs/$jobId" params={{ jobId: j.id }} hash="interview">
-                                <Mic className="mr-2 h-4 w-4" /> Interview prep
-                              </Link>
-                            </DropdownMenuItem>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem
-                              onSelect={() => handleDelete(j.id)}
-                              className="text-destructive focus:text-destructive"
-                            >
-                              <Trash2 className="mr-2 h-4 w-4" /> Delete
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </div>
-                    </td>
-
-
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      ) : (data?.length ?? 0) > 0 ? (
-        <div className="rounded-xl border border-dashed border-border p-12 text-center">
-          <p className="text-sm text-muted-foreground">No jobs match your filters.</p>
-          <Button variant="outline" size="sm" className="mt-4" onClick={clearFilters}>Clear filters</Button>
-        </div>
       ) : (
-        <div className="rounded-xl border border-dashed border-border p-12 text-center">
-          <p className="text-sm text-muted-foreground">No jobs yet.</p>
-          <Button asChild className="mt-4"><Link to="/upload">Add your first job</Link></Button>
-        </div>
-      )}
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {filteredJobs.map((j) => (
+            <div
+              key={j.id}
+              className="group rounded-2xl border border-border bg-card p-5 shadow-xs hover:border-primary/40 hover:shadow-md transition-all flex flex-col justify-between"
+            >
+              <div className="space-y-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="space-y-1 min-w-0">
+                    <Link
+                      to="/jobs/$jobId"
+                      params={{ jobId: j.id }}
+                      className="font-display text-base font-bold text-foreground group-hover:text-primary transition-colors line-clamp-1"
+                    >
+                      {j.title}
+                    </Link>
+                    <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                      <Building2 className="size-3.5 shrink-0" />
+                      <span className="font-medium truncate">{j.company}</span>
+                    </div>
+                  </div>
 
-      {/* Chrome Agent Modal */}
-      <Dialog open={cdpDialogOpen} onOpenChange={setCdpDialogOpen}>
-        <DialogContent className="w-[calc(100vw-2rem)] sm:max-w-lg border border-border bg-card text-foreground shadow-soft overflow-hidden p-5 sm:p-6">
-          <DialogHeader>
-            <div className="flex items-center gap-2.5">
-              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                <Zap className="h-5 w-5" />
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => handleDeleteJob(j.id, `${j.title} at ${j.company}`)}
+                    className="size-7 p-0 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-lg shrink-0"
+                    title="Remove job"
+                  >
+                    <Trash2 className="size-3.5" />
+                  </Button>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
+                  {j.location && (
+                    <span className="flex items-center gap-1">
+                      <MapPin className="size-3" /> {j.location}
+                    </span>
+                  )}
+                  {j.remote && (
+                    <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
+                      Remote
+                    </Badge>
+                  )}
+                  {j.employment_type && (
+                    <Badge variant="outline" className="text-[10px] px-1.5 py-0 capitalize">
+                      {j.employment_type.replace("_", " ")}
+                    </Badge>
+                  )}
+                </div>
               </div>
-              <div className="min-w-0 flex-1">
-                <DialogTitle className="font-display text-lg sm:text-xl truncate">Chrome Agent Job Discovery</DialogTitle>
-                <DialogDescription className="text-xs text-muted-foreground mt-0.5">
-                  Crawl live job boards (LinkedIn, Greenhouse, Ashby, Lever) through your Chrome session.
-                </DialogDescription>
+
+              {/* 3 Pillars Action Toolbar */}
+              <div className="mt-5 pt-3.5 border-t border-border/70 space-y-2">
+                <div className="grid grid-cols-3 gap-1.5">
+                  <Link
+                    to="/studio"
+                    search={{ jobId: j.id }}
+                    className="flex flex-col items-center justify-center p-2 rounded-xl bg-secondary/40 hover:bg-primary hover:text-primary-foreground border border-border/60 hover:border-primary transition-all text-center group/btn"
+                    title="Tailor Resume for this role"
+                  >
+                    <FileText className="size-4 mb-0.5 text-primary group-hover/btn:text-primary-foreground transition-colors" />
+                    <span className="text-[10px] font-bold">Resume</span>
+                  </Link>
+
+                  <Link
+                    to="/cover-letter"
+                    search={{ jobId: j.id }}
+                    className="flex flex-col items-center justify-center p-2 rounded-xl bg-secondary/40 hover:bg-primary hover:text-primary-foreground border border-border/60 hover:border-primary transition-all text-center group/btn"
+                    title="Generate Cover Letter for this role"
+                  >
+                    <Mail className="size-4 mb-0.5 text-primary group-hover/btn:text-primary-foreground transition-colors" />
+                    <span className="text-[10px] font-bold">Letter</span>
+                  </Link>
+
+                  <Link
+                    to="/interview"
+                    search={{ jobId: j.id }}
+                    className="flex flex-col items-center justify-center p-2 rounded-xl bg-secondary/40 hover:bg-primary hover:text-primary-foreground border border-border/60 hover:border-primary transition-all text-center group/btn"
+                    title="Prepare for Interview for this role"
+                  >
+                    <Mic className="size-4 mb-0.5 text-primary group-hover/btn:text-primary-foreground transition-colors" />
+                    <span className="text-[10px] font-bold">Interview</span>
+                  </Link>
+                </div>
               </div>
             </div>
+          ))}
+        </div>
+      )}
+
+      {/* Add Target Job Modal */}
+      <Dialog open={addModalOpen} onOpenChange={setAddModalOpen}>
+        <DialogContent className="sm:max-w-lg rounded-2xl">
+          <DialogHeader>
+            <DialogTitle className="font-display text-lg font-bold">
+              Add Target Job Description
+            </DialogTitle>
+            <DialogDescription className="text-xs">
+              Paste the job details to unlock instant AI resume tailoring, cover letter generation, and interview coaching.
+            </DialogDescription>
           </DialogHeader>
 
-          <div className="mt-3 space-y-3 w-full min-w-0">
-            <div className="rounded-lg border border-border bg-background/60 p-3 space-y-2 w-full min-w-0">
-              <div className="text-xs font-semibold text-foreground flex items-center gap-1.5">
-                <Terminal className="h-3.5 w-3.5 text-primary shrink-0" /> Autonomous Background Crawler
-              </div>
-              <p className="text-xs text-muted-foreground leading-relaxed">
-                Connects directly to your Chrome browser over DevTools Protocol, scrolls live search feeds, and syncs matched jobs into your pipeline:
-              </p>
-              <div className="flex items-center gap-2 rounded-md bg-secondary/50 p-2 font-mono text-[11px] text-foreground border border-border w-full min-w-0 overflow-hidden">
-                <code className="flex-1 min-w-0 truncate block text-[11px]">
-                  {`python scripts/chrome_agent_runner.py --search "${searchQ || "Software Engineer"}" --location "${searchLoc || "India"}"`}
-                </code>
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  className="h-6 w-6 shrink-0"
-                  onClick={() => {
-                    navigator.clipboard.writeText(`python scripts/chrome_agent_runner.py --search "${searchQ || "Software Engineer"}" --location "${searchLoc || "India"}"`);
-                    setCopiedCmd(true);
-                    toast.success("Command copied to clipboard");
-                    setTimeout(() => setCopiedCmd(false), 2000);
-                  }}
-                >
-                  {copiedCmd ? <Check className="h-3.5 w-3.5 text-primary" /> : <Copy className="h-3.5 w-3.5" />}
-                </Button>
-              </div>
+          <form onSubmit={handleAddJob} className="space-y-4 pt-2">
+            <div className="flex items-center rounded-xl bg-secondary p-1 border border-border/60">
+              <button
+                type="button"
+                onClick={() => setAddMode("paste")}
+                className={cn(
+                  "flex-1 py-1 text-xs font-semibold rounded-lg transition-all",
+                  addMode === "paste"
+                    ? "bg-card text-foreground shadow-xs"
+                    : "text-muted-foreground hover:text-foreground",
+                )}
+              >
+                Paste Description
+              </button>
+              <button
+                type="button"
+                onClick={() => setAddMode("url")}
+                className={cn(
+                  "flex-1 py-1 text-xs font-semibold rounded-lg transition-all",
+                  addMode === "url"
+                    ? "bg-card text-foreground shadow-xs"
+                    : "text-muted-foreground hover:text-foreground",
+                )}
+              >
+                Import from URL
+              </button>
             </div>
 
-            <div className="rounded-lg border border-border bg-background/60 p-3 space-y-1.5 w-full min-w-0">
-              <div className="text-xs font-semibold text-foreground flex items-center gap-1.5">
-                <Globe className="h-3.5 w-3.5 text-primary shrink-0" /> 1-Click Page Importer
+            {addMode === "url" ? (
+              <div className="space-y-2">
+                <Label htmlFor="add-url" className="text-xs font-semibold text-muted-foreground">
+                  Job Posting URL (Greenhouse, Lever, LinkedIn, etc.)
+                </Label>
+                <Input
+                  id="add-url"
+                  type="url"
+                  placeholder="https://boards.greenhouse.io/company/jobs/12345"
+                  value={sourceUrl}
+                  onChange={(e) => setSourceUrl(e.target.value)}
+                  className="text-xs rounded-xl"
+                  required
+                />
               </div>
-              <p className="text-xs text-muted-foreground leading-relaxed">
-                Whenever you browse any job posting on LinkedIn or direct ATS boards, click the CareerOS extension to instantly extract and save the role.
-              </p>
-            </div>
-          </div>
+            ) : (
+              <>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <Label htmlFor="add-title" className="text-xs font-semibold text-muted-foreground">
+                      Job Title *
+                    </Label>
+                    <Input
+                      id="add-title"
+                      placeholder="e.g. Senior Backend Engineer"
+                      value={title}
+                      onChange={(e) => setTitle(e.target.value)}
+                      className="text-xs rounded-xl"
+                      required
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="add-company" className="text-xs font-semibold text-muted-foreground">
+                      Company Name *
+                    </Label>
+                    <Input
+                      id="add-company"
+                      placeholder="e.g. Stripe"
+                      value={company}
+                      onChange={(e) => setCompany(e.target.value)}
+                      className="text-xs rounded-xl"
+                      required
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <Label htmlFor="add-loc" className="text-xs font-semibold text-muted-foreground">
+                    Location (optional)
+                  </Label>
+                  <Input
+                    id="add-loc"
+                    placeholder="e.g. San Francisco, CA / Remote"
+                    value={location}
+                    onChange={(e) => setLocation(e.target.value)}
+                    className="text-xs rounded-xl"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <Label htmlFor="add-desc" className="text-xs font-semibold text-muted-foreground">
+                    Job Description Text & Requirements
+                  </Label>
+                  <Textarea
+                    id="add-desc"
+                    rows={5}
+                    placeholder="Paste the full job posting requirements and details..."
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                    className="text-xs resize-none rounded-xl leading-relaxed bg-secondary/30"
+                  />
+                </div>
+              </>
+            )}
+
+            <DialogFooter className="pt-2">
+              <Button type="button" variant="ghost" onClick={() => setAddModalOpen(false)}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={isSubmitting} className="font-bold text-xs rounded-xl">
+                {isSubmitting ? <Loader2 className="size-3.5 animate-spin mr-1.5" /> : <Plus className="size-3.5 mr-1.5" />}
+                <span>Save Target Job</span>
+              </Button>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
     </div>

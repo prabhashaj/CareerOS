@@ -1,73 +1,75 @@
 import { createLazyFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { toast } from "sonner";
 import {
   ArrowRight,
   FileText,
-  Search,
-  ClipboardCheck,
+  Mail,
+  Mic,
   Sparkles,
+  Briefcase,
   TrendingUp,
-  BookOpen,
-  User,
-  Globe,
-  FilePlus,
-  PenTool,
-  X,
-  HelpCircle,
+  FolderOpen,
+  Plus,
+  Zap,
+  Download,
+  Building2,
+  ChevronRight,
+  CheckCircle2,
+  ShieldCheck,
 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { listApplications, listReviewQueue } from "@/lib/applications.functions";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
+import { listApplications } from "@/lib/applications.functions";
 import { listDocuments } from "@/lib/documents.functions";
-import { listJobs } from "@/lib/jobs.functions";
-import { searchJobsWeb } from "@/lib/jobsearch.functions";
+import { listJobs, createJob } from "@/lib/jobs.functions";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/hooks/use-auth";
 
 export const Route = createLazyFileRoute("/_authenticated/dashboard")({
   component: Dashboard,
 });
 
 function Dashboard() {
+  const { user } = useAuth();
   const qc = useQueryClient();
   const navigate = useNavigate();
   const jobsFn = useServerFn(listJobs);
   const docsFn = useServerFn(listDocuments);
   const appsFn = useServerFn(listApplications);
-  const reviewFn = useServerFn(listReviewQueue);
-  const searchFn = useServerFn(searchJobsWeb);
+  const createJobFn = useServerFn(createJob);
 
-  const [q, setQ] = useState("");
-  const [loc, setLoc] = useState("");
-  const [searching, setSearching] = useState(false);
-  const [showGuide, setShowGuide] = useState(true);
-
-  useEffect(() => {
-    const saved = localStorage.getItem("career_os_onboarding_guide");
-    if (saved === "false") {
-      setShowGuide(false);
-    }
-  }, []);
-
-  const handleDismissGuide = () => {
-    setShowGuide(false);
-    localStorage.setItem("career_os_onboarding_guide", "false");
-  };
-
-  const handleShowGuide = () => {
-    setShowGuide(true);
-    localStorage.removeItem("career_os_onboarding_guide");
-  };
+  // Quick Launchpad state
+  const [quickTitle, setQuickTitle] = useState("");
+  const [quickCompany, setQuickCompany] = useState("");
+  const [quickDescription, setQuickDescription] = useState("");
+  const [isSavingJob, setIsSavingJob] = useState(false);
 
   const jobs = useQuery({ queryKey: ["jobs"], queryFn: () => jobsFn() });
   const docs = useQuery({ queryKey: ["documents"], queryFn: () => docsFn() });
   const apps = useQuery({ queryKey: ["applications"], queryFn: () => appsFn() });
-  const reviews = useQuery({ queryKey: ["review_queue"], queryFn: () => reviewFn() });
 
-  const pendingReviews = (reviews.data ?? []).filter((r) => r.status === "pending").length;
+  // User saved resumes query
+  const { data: resumes = [] } = useQuery({
+    queryKey: ["resumes", user?.id],
+    enabled: !!user,
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("resumes")
+        .select("*")
+        .eq("user_id", user!.id)
+        .order("updated_at", { ascending: false })
+        .limit(6);
+      return data ?? [];
+    },
+  });
+
   const scoredApps = (apps.data ?? []).filter((a) => a.match_score != null);
   const avgScore = scoredApps.length
     ? Math.round(
@@ -75,267 +77,307 @@ function Dashboard() {
       )
     : null;
 
-  const topMatches = [...(apps.data ?? [])]
-    .filter((a) => a.match_score != null)
-    .sort((a, b) => Number(b.match_score) - Number(a.match_score))
-    .slice(0, 5);
-
-  void docs;
-
-
-  const handleDiscover = async () => {
-    if (!q.trim()) {
-      toast.error("Please enter a role, skill, or keywords to search.");
+  const handleQuickAction = async (target: "studio" | "cover-letter" | "interview") => {
+    if (!quickTitle.trim() && !quickDescription.trim()) {
+      navigate({ to: `/${target}` });
       return;
     }
-    navigate({
-      to: "/jobs",
-      search: { q: q.trim(), loc: loc.trim() || undefined, search: true },
-    });
+
+    // Save job first if provided
+    let createdJobId: string | undefined = undefined;
+    if (quickTitle.trim() || quickDescription.trim()) {
+      try {
+        setIsSavingJob(true);
+        const newJob = await createJobFn({
+          data: {
+            title: quickTitle.trim() || "Target Role",
+            company: quickCompany.trim() || "Target Company",
+            description: quickDescription.trim() || undefined,
+          },
+        });
+        createdJobId = newJob.id;
+        void qc.invalidateQueries({ queryKey: ["jobs"] });
+      } catch (e) {
+        console.error(e);
+      } finally {
+        setIsSavingJob(false);
+      }
+    }
+
+    if (target === "studio") {
+      navigate({ to: "/studio", search: { jobId: createdJobId } });
+    } else if (target === "cover-letter") {
+      navigate({ to: "/cover-letter", search: { jobId: createdJobId } });
+    } else if (target === "interview") {
+      navigate({ to: "/interview", search: { jobId: createdJobId } });
+    }
   };
 
   return (
-    <div className="mx-auto max-w-7xl space-y-10 p-6 md:p-10">
-      <section className="relative overflow-hidden rounded-3xl border border-border bg-gradient-primary p-8 text-primary-foreground shadow-lift md:p-14">
-        <div className="absolute -right-24 -top-24 h-72 w-72 rounded-full bg-accent/25 blur-3xl" />
-        <div className="absolute -bottom-32 -left-16 h-72 w-72 rounded-full bg-accent/10 blur-3xl" />
-        <div className="relative max-w-2xl">
-          <span className="inline-flex items-center gap-2 rounded-full border border-accent/40 bg-accent/15 px-3 py-1 text-[11px] uppercase tracking-[0.18em] text-accent">
-            <Sparkles className="h-3 w-3" /> AI Discovery
-          </span>
-          <h1 className="mt-5 font-display text-5xl leading-[1.02] md:text-6xl">
-            Find your next role,<br />
-            <em className="text-accent">tailored</em> to you.
-          </h1>
-          <p className="mt-4 max-w-xl text-base text-primary-foreground/75">
-            Search Naukri, LinkedIn India, Instahyre, Cutshort and other top Indian job boards. We rank every match against your profile and draft a tailored application.
-          </p>
-          <div className="mt-7 flex flex-col gap-2 rounded-2xl bg-background/95 p-2 text-foreground shadow-lift sm:flex-row">
-            <div className="flex flex-1 items-center gap-2 px-3">
-              <Search className="h-4 w-4 text-muted-foreground" />
-              <Input
-                value={q}
-                onChange={(e) => setQ(e.target.value)}
-                placeholder="Role, skill or keywords"
-                className="border-0 px-0 shadow-none focus-visible:ring-0"
-                disabled={searching}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") handleDiscover();
-                }}
-              />
-            </div>
-            <div className="hidden h-8 w-px self-center bg-border sm:block" />
-            <Input
-              value={loc}
-              onChange={(e) => setLoc(e.target.value)}
-              placeholder="Location (optional)"
-              className="border-0 shadow-none focus-visible:ring-0 sm:max-w-[220px]"
-              disabled={searching}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") handleDiscover();
-              }}
-            />
-            <Button onClick={handleDiscover} disabled={searching} size="lg" className="bg-gradient-accent text-accent-foreground hover:opacity-90">
-              {searching ? "Searching…" : "Discover jobs"}
-            </Button>
+    <div className="mx-auto max-w-7xl space-y-10 p-6 sm:p-10">
+      {/* ── HERO BANNER: The 3 Superpowers ── */}
+      <section className="relative overflow-hidden rounded-3xl border border-border bg-gradient-primary p-8 text-primary-foreground shadow-lift md:p-12">
+        <div className="absolute -right-20 -top-20 h-72 w-72 rounded-full bg-accent/25 blur-3xl pointer-events-none" />
+        <div className="relative z-10 max-w-3xl space-y-4">
+          <div className="inline-flex items-center gap-2 rounded-full border border-primary-foreground/20 bg-primary-foreground/10 px-3.5 py-1 text-xs font-semibold backdrop-blur-md">
+            <Sparkles className="h-3.5 w-3.5 text-accent" /> AI Career Suite
           </div>
-          <div className="mt-4 flex flex-wrap gap-2 text-xs">
-            <Link to="/studio" className="rounded-full bg-accent/20 border border-accent/40 px-3 py-1.5 text-accent font-semibold transition-colors hover:bg-accent/30">
-              <Sparkles className="inline-block mr-1 h-3.5 w-3.5" /> Resume Studio →
+          <h1 className="font-display text-3xl font-bold tracking-tight md:text-5xl leading-tight">
+            Tailor Resumes, Craft Cover Letters & Master Interviews
+          </h1>
+          <p className="text-sm md:text-base text-primary-foreground/80 leading-relaxed max-w-2xl">
+            Everything is grounded in your verified background and aligned directly to target job descriptions for maximum ATS match and human impact.
+          </p>
+
+          <div className="flex flex-wrap gap-3 pt-2">
+            <Link to="/studio">
+              <Button size="lg" className="bg-primary-foreground text-primary hover:bg-primary-foreground/90 font-bold rounded-xl shadow-md">
+                <Sparkles className="mr-2 h-4 w-4 text-primary" /> Open Resume Studio
+              </Button>
             </Link>
-            <Link to="/resumes" className="rounded-full bg-background/10 px-3 py-1.5 text-primary-foreground/80 transition-colors hover:bg-background/20">
-              My Resumes →
+            <Link to="/cover-letter">
+              <Button size="lg" variant="outline" className="border-primary-foreground/30 bg-primary-foreground/10 text-primary-foreground hover:bg-primary-foreground/20 font-semibold rounded-xl backdrop-blur-sm">
+                <Mail className="mr-2 h-4 w-4" /> Cover Letter Maker
+              </Button>
             </Link>
-            <Link to="/upload" className="rounded-full bg-background/10 px-3 py-1.5 text-primary-foreground/80 transition-colors hover:bg-background/20">
-              Paste a URL →
-            </Link>
-            <Link to="/jobs" className="rounded-full bg-background/10 px-3 py-1.5 text-primary-foreground/80 transition-colors hover:bg-background/20">
-              Browse pipeline →
+            <Link to="/interview">
+              <Button size="lg" variant="outline" className="border-primary-foreground/30 bg-primary-foreground/10 text-primary-foreground hover:bg-primary-foreground/20 font-semibold rounded-xl backdrop-blur-sm">
+                <Mic className="mr-2 h-4 w-4" /> Interview Prep
+              </Button>
             </Link>
           </div>
         </div>
       </section>
 
-      {showGuide ? (
-        <section className="relative overflow-hidden rounded-2xl border border-border bg-card p-6 shadow-soft md:p-8 animate-fade-in-up">
-          <div className="absolute right-4 top-4">
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={handleDismissGuide}
-              className="text-muted-foreground hover:text-foreground h-8 w-8"
-              title="Dismiss onboarding guide"
-            >
-              <X className="h-4 w-4" />
-            </Button>
-          </div>
-          <div className="flex items-center gap-2 mb-4">
-            <BookOpen className="h-5 w-5 text-primary" />
-            <h2 className="font-display text-2xl md:text-3xl text-foreground">
-              Getting Started: How to effectively use CareerOS
+      {/* ── 1-CLICK JOB DESCRIPTION LAUNCHPAD ── */}
+      <section className="rounded-3xl border border-border bg-card p-6 sm:p-8 shadow-xs space-y-6">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 border-b border-border/70 pb-4">
+          <div className="space-y-1">
+            <h2 className="font-display text-xl font-bold text-foreground flex items-center gap-2">
+              <Zap className="size-5 text-primary" /> Instant JD Launchpad
             </h2>
+            <p className="text-xs text-muted-foreground">
+              Paste any Job Description to immediately generate tailored application assets with 1 click.
+            </p>
           </div>
-          <p className="text-sm text-muted-foreground mb-6 max-w-3xl">
-            CareerOS matches and tailors applications by grounding AI actions in your real background. Follow these steps to build your master knowledge base and generate high-impact career assets.
-          </p>
-          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
-            <div className="flex flex-col justify-between space-y-3 rounded-xl border border-border bg-muted/10 p-4 transition-all hover:bg-muted/20">
-              <div className="space-y-2">
-                <div className="flex items-center gap-2">
-                  <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/10 text-[11px] font-semibold text-primary">
-                    1
-                  </span>
-                  <div className="font-medium text-sm flex items-center gap-1.5 text-foreground">
-                    <User className="h-4 w-4 text-muted-foreground" /> Profile details
-                  </div>
-                </div>
-                <p className="text-xs leading-relaxed text-muted-foreground">
-                  Fill in your target roles, locations, and personal info in Settings. This defines the target parameters for all matching.
-                </p>
-              </div>
-              <Link
-                to="/settings"
-                className="inline-flex items-center gap-1 text-xs font-semibold text-primary hover:underline pt-2"
-              >
-                Configure details <ArrowRight className="h-3 w-3" />
-              </Link>
-            </div>
+        </div>
 
-            <div className="flex flex-col justify-between space-y-3 rounded-xl border border-border bg-muted/10 p-4 transition-all hover:bg-muted/20">
-              <div className="space-y-2">
-                <div className="flex items-center gap-2">
-                  <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/10 text-[11px] font-semibold text-primary">
-                    2
-                  </span>
-                  <div className="font-medium text-sm flex items-center gap-1.5 text-foreground">
-                    <Globe className="h-4 w-4 text-muted-foreground" /> Connect URLs
-                  </div>
-                </div>
-                <p className="text-xs leading-relaxed text-muted-foreground">
-                  Enrich your profile by pasting links to your GitHub, LinkedIn, portfolio, or blogs. Our AI indexes them automatically.
-                </p>
-              </div>
-              <Link
-                to="/settings"
-                className="inline-flex items-center gap-1 text-xs font-semibold text-primary hover:underline pt-2"
-              >
-                Expand profile <ArrowRight className="h-3 w-3" />
-              </Link>
+        <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
+          <div className="md:col-span-4 space-y-3">
+            <div className="space-y-1">
+              <Label className="text-[11px] font-semibold text-muted-foreground">Job Title</Label>
+              <Input
+                placeholder="e.g. Senior Machine Learning Engineer"
+                value={quickTitle}
+                onChange={(e) => setQuickTitle(e.target.value)}
+                className="h-9 text-xs rounded-xl bg-secondary/30"
+              />
             </div>
-
-            <div className="flex flex-col justify-between space-y-3 rounded-xl border border-border bg-muted/10 p-4 transition-all hover:bg-muted/20">
-              <div className="space-y-2">
-                <div className="flex items-center gap-2">
-                  <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/10 text-[11px] font-semibold text-primary">
-                    3
-                  </span>
-                  <div className="font-medium text-sm flex items-center gap-1.5 text-foreground">
-                    <FilePlus className="h-4 w-4 text-muted-foreground" /> Add Documents
-                  </div>
-                </div>
-                <p className="text-xs leading-relaxed text-muted-foreground">
-                  Upload your master resumes, past cover letters, transcripts, or experience letters to act as the source of truth for applications.
-                </p>
-              </div>
-              <Link
-                to="/upload"
-                className="inline-flex items-center gap-1 text-xs font-semibold text-primary hover:underline pt-2"
-              >
-                Upload resumes <ArrowRight className="h-3 w-3" />
-              </Link>
-            </div>
-
-            <div className="flex flex-col justify-between space-y-3 rounded-xl border border-border bg-muted/10 p-4 transition-all hover:bg-muted/20">
-              <div className="space-y-2">
-                <div className="flex items-center gap-2">
-                  <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/10 text-[11px] font-semibold text-primary">
-                    4
-                  </span>
-                  <div className="font-medium text-sm flex items-center gap-1.5 text-foreground">
-                    <PenTool className="h-4 w-4 text-muted-foreground" /> Writing Style
-                  </div>
-                </div>
-                <p className="text-xs leading-relaxed text-muted-foreground">
-                  Paste writing samples in Settings. The AI builds a style print so tailored applications speak in your genuine voice.
-                </p>
-              </div>
-              <Link
-                to="/settings"
-                className="inline-flex items-center gap-1 text-xs font-semibold text-primary hover:underline pt-2"
-              >
-                Train writing style <ArrowRight className="h-3 w-3" />
-              </Link>
+            <div className="space-y-1">
+              <Label className="text-[11px] font-semibold text-muted-foreground">Company Name</Label>
+              <Input
+                placeholder="e.g. Stripe, OpenAI, Google"
+                value={quickCompany}
+                onChange={(e) => setQuickCompany(e.target.value)}
+                className="h-9 text-xs rounded-xl bg-secondary/30"
+              />
             </div>
           </div>
-        </section>
-      ) : (
-        <div className="flex justify-end">
+
+          <div className="md:col-span-8 space-y-1">
+            <Label className="text-[11px] font-semibold text-muted-foreground">Job Description Requirements / Text</Label>
+            <Textarea
+              rows={4}
+              placeholder="Paste the full job posting requirements here to tailor resumes, generate cover letters, or create mock interview drills..."
+              value={quickDescription}
+              onChange={(e) => setQuickDescription(e.target.value)}
+              className="text-xs resize-none rounded-xl leading-relaxed bg-secondary/30"
+            />
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center justify-end gap-2.5 pt-2 border-t border-border/60">
+          <span className="text-xs text-muted-foreground mr-auto hidden sm:inline">
+            Choose what to generate for this JD:
+          </span>
           <Button
-            variant="ghost"
+            variant="default"
             size="sm"
-            onClick={handleShowGuide}
-            className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 h-8 px-3 rounded-full border border-border bg-card/50"
+            onClick={() => handleQuickAction("studio")}
+            disabled={isSavingJob}
+            className="h-9 font-bold text-xs gap-1.5 rounded-xl shadow-xs"
           >
-            <HelpCircle className="h-3.5 w-3.5" /> Show setup guide
+            <Sparkles className="size-3.5" /> Tailor Resume
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => handleQuickAction("cover-letter")}
+            disabled={isSavingJob}
+            className="h-9 font-semibold text-xs gap-1.5 rounded-xl"
+          >
+            <Mail className="size-3.5 text-primary" /> Cover Letter
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => handleQuickAction("interview")}
+            disabled={isSavingJob}
+            className="h-9 font-semibold text-xs gap-1.5 rounded-xl"
+          >
+            <Mic className="size-3.5 text-primary" /> Interview Prep
           </Button>
         </div>
-      )}
+      </section>
 
-      <div className="grid gap-4 lg:grid-cols-3">
-        <div className="rounded-2xl border border-border bg-card p-6 shadow-soft lg:col-span-2">
-          <div className="mb-4 flex items-center justify-between">
-            <div>
-              <h2 className="font-display text-2xl">Top matches</h2>
-              <p className="text-xs text-muted-foreground">Highest-scoring applications</p>
-            </div>
-            <Button asChild variant="ghost" size="sm">
-              <Link to="/jobs">
-                All jobs <ArrowRight className="ml-1 h-3 w-3" />
-              </Link>
-            </Button>
+      {/* ── STATS & PIPELINE OVERVIEW ── */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+        <div className="rounded-2xl border border-border bg-card p-5 shadow-xs">
+          <div className="flex items-center justify-between text-muted-foreground">
+            <span className="text-xs uppercase font-bold tracking-wider">Target Roles</span>
+            <Briefcase className="size-4" />
           </div>
-          {topMatches.length > 0 ? (
-            <ul className="divide-y divide-border">
-              {topMatches.map((a) => {
-                const pct = Math.round(Number(a.match_score) * 100);
-                return (
-                  <li key={a.id} className="py-3">
-                    <Link to="/jobs/$jobId" params={{ jobId: a.job_id }} className="flex items-center justify-between gap-4 rounded-lg px-2 py-1 -mx-2 transition-colors hover:bg-muted/50">
-                      <div className="min-w-0">
-                        <div className="truncate font-medium">{a.job?.title ?? "Untitled"}</div>
-                        <div className="truncate text-sm text-muted-foreground">{a.job?.company ?? ""}</div>
-                      </div>
-                      <Badge variant={pct >= 75 ? "default" : pct >= 50 ? "secondary" : "outline"} className="shrink-0">{pct}%</Badge>
-                    </Link>
-                  </li>
-                );
-              })}
-            </ul>
+          <div className="mt-2 font-display text-3xl font-bold text-foreground">{jobs.data?.length ?? 0}</div>
+          <p className="mt-1 text-[11px] text-muted-foreground">Saved job descriptions</p>
+        </div>
+
+        <div className="rounded-2xl border border-border bg-card p-5 shadow-xs">
+          <div className="flex items-center justify-between text-muted-foreground">
+            <span className="text-xs uppercase font-bold tracking-wider">Resumes</span>
+            <FileText className="size-4" />
+          </div>
+          <div className="mt-2 font-display text-3xl font-bold text-foreground">{resumes.length}</div>
+          <p className="mt-1 text-[11px] text-muted-foreground">Tailored & starter versions</p>
+        </div>
+
+        <div className="rounded-2xl border border-border bg-card p-5 shadow-xs">
+          <div className="flex items-center justify-between text-muted-foreground">
+            <span className="text-xs uppercase font-bold tracking-wider">Applications</span>
+            <TrendingUp className="size-4" />
+          </div>
+          <div className="mt-2 font-display text-3xl font-bold text-foreground">{apps.data?.length ?? 0}</div>
+          <p className="mt-1 text-[11px] text-muted-foreground">In pipeline</p>
+        </div>
+
+        <div className="rounded-2xl border border-border bg-card p-5 shadow-xs">
+          <div className="flex items-center justify-between text-muted-foreground">
+            <span className="text-xs uppercase font-bold tracking-wider">Avg Match</span>
+            <ShieldCheck className="size-4 text-primary" />
+          </div>
+          <div className="mt-2 font-display text-3xl font-bold text-foreground">
+            {avgScore != null ? `${avgScore}%` : "—"}
+          </div>
+          <p className="mt-1 text-[11px] text-muted-foreground">ATS match alignment</p>
+        </div>
+      </div>
+
+      {/* ── SAVED TARGET ROLES & RECENT RESUMES ── */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Left: Saved Target Roles */}
+        <div className="rounded-3xl border border-border bg-card p-6 shadow-xs space-y-4">
+          <div className="flex items-center justify-between border-b border-border/60 pb-3">
+            <div className="flex items-center gap-2">
+              <Briefcase className="size-4 text-primary" />
+              <h3 className="font-display text-base font-bold text-foreground">Target Roles</h3>
+            </div>
+            <Link to="/jobs" className="text-xs text-primary font-semibold hover:underline flex items-center gap-0.5">
+              View all <ChevronRight className="size-3" />
+            </Link>
+          </div>
+
+          {(jobs.data ?? []).length === 0 ? (
+            <div className="text-center py-8 space-y-2 border border-dashed border-border rounded-2xl bg-secondary/10">
+              <p className="text-xs text-muted-foreground">No target roles saved yet.</p>
+              <Link to="/jobs">
+                <Button size="sm" variant="outline" className="text-xs h-8">
+                  <Plus className="size-3.5 mr-1" /> Add Target Role
+                </Button>
+              </Link>
+            </div>
           ) : (
-            <div className="rounded-xl border border-dashed border-border p-10 text-center">
-              <p className="text-sm text-muted-foreground">No ranked jobs yet. Open a job and click Rank.</p>
-              <Button asChild className="mt-4" size="sm">
-                <Link to="/jobs">Go to jobs</Link>
-              </Button>
+            <div className="space-y-2.5">
+              {(jobs.data ?? []).slice(0, 4).map((j) => (
+                <div
+                  key={j.id}
+                  className="flex items-center justify-between p-3 rounded-2xl border border-border bg-secondary/20 hover:border-primary/40 transition-all"
+                >
+                  <div className="min-w-0 pr-3">
+                    <div className="font-semibold text-xs text-foreground truncate">{j.title}</div>
+                    <div className="text-[11px] text-muted-foreground flex items-center gap-1.5">
+                      <Building2 className="size-3 shrink-0" />
+                      <span className="truncate">{j.company}</span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <Link to="/studio" search={{ jobId: j.id }}>
+                      <Button size="sm" variant="ghost" className="h-7 px-2 text-[10px] font-semibold text-primary" title="Resume">
+                        Resume
+                      </Button>
+                    </Link>
+                    <Link to="/cover-letter" search={{ jobId: j.id }}>
+                      <Button size="sm" variant="ghost" className="h-7 px-2 text-[10px] font-semibold text-primary" title="Letter">
+                        Letter
+                      </Button>
+                    </Link>
+                    <Link to="/interview" search={{ jobId: j.id }}>
+                      <Button size="sm" variant="ghost" className="h-7 px-2 text-[10px] font-semibold text-primary" title="Prep">
+                        Prep
+                      </Button>
+                    </Link>
+                  </div>
+                </div>
+              ))}
             </div>
           )}
         </div>
 
-        <div className="relative overflow-hidden rounded-2xl border border-border bg-card p-6 shadow-soft">
-          <div className="absolute -right-10 -top-10 h-32 w-32 rounded-full bg-accent/20 blur-2xl" />
-          <div className="relative">
-            <div className="mb-4 flex items-center gap-2">
-              <TrendingUp className="h-4 w-4 text-muted-foreground" />
-              <h2 className="font-display text-2xl">Quality</h2>
+        {/* Right: Resumes in Library */}
+        <div className="rounded-3xl border border-border bg-card p-6 shadow-xs space-y-4">
+          <div className="flex items-center justify-between border-b border-border/60 pb-3">
+            <div className="flex items-center gap-2">
+              <FolderOpen className="size-4 text-primary" />
+              <h3 className="font-display text-base font-bold text-foreground">Resumes & Documents</h3>
             </div>
-            <div className="font-display text-6xl">{avgScore == null ? "—" : `${avgScore}%`}</div>
-            <p className="mt-2 text-sm text-muted-foreground">Average AI match score across your applications.</p>
-            <Button asChild variant="outline" className="mt-6 w-full">
-              <Link to="/applications">
-                <ClipboardCheck className="mr-2 h-4 w-4" /> View applications
-              </Link>
-            </Button>
+            <Link to="/resumes" className="text-xs text-primary font-semibold hover:underline flex items-center gap-0.5">
+              View all <ChevronRight className="size-3" />
+            </Link>
           </div>
+
+          {resumes.length === 0 ? (
+            <div className="text-center py-8 space-y-2 border border-dashed border-border rounded-2xl bg-secondary/10">
+              <p className="text-xs text-muted-foreground">No saved resumes found.</p>
+              <Link to="/studio">
+                <Button size="sm" className="text-xs h-8">
+                  <Sparkles className="size-3.5 mr-1" /> Create Resume
+                </Button>
+              </Link>
+            </div>
+          ) : (
+            <div className="space-y-2.5">
+              {resumes.slice(0, 4).map((r) => (
+                <div
+                  key={r.id}
+                  className="flex items-center justify-between p-3 rounded-2xl border border-border bg-secondary/20 hover:border-primary/40 transition-all"
+                >
+                  <div className="min-w-0 pr-3">
+                    <div className="font-semibold text-xs text-foreground truncate">{r.title || "Untitled Resume"}</div>
+                    <div className="text-[11px] text-muted-foreground">
+                      Template: {r.template_id} • v{r.version}
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <Link to="/studio" search={{ resumeId: r.id }}>
+                      <Button size="sm" variant="outline" className="h-7 px-2.5 text-xs font-semibold">
+                        Edit in Studio
+                      </Button>
+                    </Link>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </div>

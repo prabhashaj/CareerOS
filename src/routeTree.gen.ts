@@ -17,20 +17,16 @@ import { Route as ApiAgentRouteImport } from './routes/api.agent'
 import { Route as AuthenticatedUploadRouteImport } from './routes/_authenticated.upload'
 import { Route as AuthenticatedStudioRouteImport } from './routes/_authenticated.studio'
 import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticated.settings'
-import { Route as AuthenticatedReviewRouteImport } from './routes/_authenticated.review'
 import { Route as AuthenticatedResumesRouteImport } from './routes/_authenticated.resumes'
+import { Route as AuthenticatedInterviewRouteImport } from './routes/_authenticated.interview'
 import { Route as AuthenticatedEvaluationRouteImport } from './routes/_authenticated.evaluation'
-import { Route as AuthenticatedDocumentsRouteImport } from './routes/_authenticated.documents'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated.dashboard'
+import { Route as AuthenticatedCoverLetterRouteImport } from './routes/_authenticated.cover-letter'
 import { Route as AuthenticatedCareerRouteImport } from './routes/_authenticated.career'
 import { Route as AuthenticatedApplicationsRouteImport } from './routes/_authenticated.applications'
 import { Route as AuthenticatedAnalyticsRouteImport } from './routes/_authenticated.analytics'
 import { Route as AuthenticatedJobsIndexRouteImport } from './routes/_authenticated.jobs.index'
 import { Route as AuthenticatedJobsJobIdRouteImport } from './routes/_authenticated.jobs.$jobId'
-import { Route as ApiPublicExtensionImportJobRouteImport } from './routes/api.public.extension.import-job'
-import { Route as ApiPublicExtensionEventRouteImport } from './routes/api.public.extension.event'
-import { Route as ApiPublicExtensionContextRouteImport } from './routes/api.public.extension.context'
-import { Route as ApiPublicExtensionAgentPlanRouteImport } from './routes/api.public.extension.agent-plan'
 
 const RegisterRoute = RegisterRouteImport.update({
   id: '/register',
@@ -71,24 +67,19 @@ const AuthenticatedSettingsRoute = AuthenticatedSettingsRouteImport.update({
   path: '/settings',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
-const AuthenticatedReviewRoute = AuthenticatedReviewRouteImport.update({
-  id: '/review',
-  path: '/review',
-  getParentRoute: () => AuthenticatedRoute,
-} as any)
 const AuthenticatedResumesRoute = AuthenticatedResumesRouteImport.update({
   id: '/resumes',
   path: '/resumes',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
+const AuthenticatedInterviewRoute = AuthenticatedInterviewRouteImport.update({
+  id: '/interview',
+  path: '/interview',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
 const AuthenticatedEvaluationRoute = AuthenticatedEvaluationRouteImport.update({
   id: '/evaluation',
   path: '/evaluation',
-  getParentRoute: () => AuthenticatedRoute,
-} as any)
-const AuthenticatedDocumentsRoute = AuthenticatedDocumentsRouteImport.update({
-  id: '/documents',
-  path: '/documents',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
 const AuthenticatedDashboardRoute = AuthenticatedDashboardRouteImport.update({
@@ -98,6 +89,12 @@ const AuthenticatedDashboardRoute = AuthenticatedDashboardRouteImport.update({
 } as any).lazy(() =>
   import('./routes/_authenticated.dashboard.lazy').then((d) => d.Route),
 )
+const AuthenticatedCoverLetterRoute =
+  AuthenticatedCoverLetterRouteImport.update({
+    id: '/cover-letter',
+    path: '/cover-letter',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
 const AuthenticatedCareerRoute = AuthenticatedCareerRouteImport.update({
   id: '/career',
   path: '/career',
@@ -124,29 +121,6 @@ const AuthenticatedJobsJobIdRoute = AuthenticatedJobsJobIdRouteImport.update({
   path: '/jobs/$jobId',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
-const ApiPublicExtensionImportJobRoute =
-  ApiPublicExtensionImportJobRouteImport.update({
-    id: '/api/public/extension/import-job',
-    path: '/api/public/extension/import-job',
-    getParentRoute: () => rootRouteImport,
-  } as any)
-const ApiPublicExtensionEventRoute = ApiPublicExtensionEventRouteImport.update({
-  id: '/api/public/extension/event',
-  path: '/api/public/extension/event',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiPublicExtensionContextRoute =
-  ApiPublicExtensionContextRouteImport.update({
-    id: '/api/public/extension/context',
-    path: '/api/public/extension/context',
-    getParentRoute: () => rootRouteImport,
-  } as any)
-const ApiPublicExtensionAgentPlanRoute =
-  ApiPublicExtensionAgentPlanRouteImport.update({
-    id: '/api/public/extension/agent-plan',
-    path: '/api/public/extension/agent-plan',
-    getParentRoute: () => rootRouteImport,
-  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -155,21 +129,17 @@ export interface FileRoutesByFullPath {
   '/analytics': typeof AuthenticatedAnalyticsRoute
   '/applications': typeof AuthenticatedApplicationsRoute
   '/career': typeof AuthenticatedCareerRoute
+  '/cover-letter': typeof AuthenticatedCoverLetterRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
-  '/documents': typeof AuthenticatedDocumentsRoute
   '/evaluation': typeof AuthenticatedEvaluationRoute
+  '/interview': typeof AuthenticatedInterviewRoute
   '/resumes': typeof AuthenticatedResumesRoute
-  '/review': typeof AuthenticatedReviewRoute
   '/settings': typeof AuthenticatedSettingsRoute
   '/studio': typeof AuthenticatedStudioRoute
   '/upload': typeof AuthenticatedUploadRoute
   '/api/agent': typeof ApiAgentRoute
   '/jobs/$jobId': typeof AuthenticatedJobsJobIdRoute
   '/jobs/': typeof AuthenticatedJobsIndexRoute
-  '/api/public/extension/agent-plan': typeof ApiPublicExtensionAgentPlanRoute
-  '/api/public/extension/context': typeof ApiPublicExtensionContextRoute
-  '/api/public/extension/event': typeof ApiPublicExtensionEventRoute
-  '/api/public/extension/import-job': typeof ApiPublicExtensionImportJobRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -178,21 +148,17 @@ export interface FileRoutesByTo {
   '/analytics': typeof AuthenticatedAnalyticsRoute
   '/applications': typeof AuthenticatedApplicationsRoute
   '/career': typeof AuthenticatedCareerRoute
+  '/cover-letter': typeof AuthenticatedCoverLetterRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
-  '/documents': typeof AuthenticatedDocumentsRoute
   '/evaluation': typeof AuthenticatedEvaluationRoute
+  '/interview': typeof AuthenticatedInterviewRoute
   '/resumes': typeof AuthenticatedResumesRoute
-  '/review': typeof AuthenticatedReviewRoute
   '/settings': typeof AuthenticatedSettingsRoute
   '/studio': typeof AuthenticatedStudioRoute
   '/upload': typeof AuthenticatedUploadRoute
   '/api/agent': typeof ApiAgentRoute
   '/jobs/$jobId': typeof AuthenticatedJobsJobIdRoute
   '/jobs': typeof AuthenticatedJobsIndexRoute
-  '/api/public/extension/agent-plan': typeof ApiPublicExtensionAgentPlanRoute
-  '/api/public/extension/context': typeof ApiPublicExtensionContextRoute
-  '/api/public/extension/event': typeof ApiPublicExtensionEventRoute
-  '/api/public/extension/import-job': typeof ApiPublicExtensionImportJobRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -203,21 +169,17 @@ export interface FileRoutesById {
   '/_authenticated/analytics': typeof AuthenticatedAnalyticsRoute
   '/_authenticated/applications': typeof AuthenticatedApplicationsRoute
   '/_authenticated/career': typeof AuthenticatedCareerRoute
+  '/_authenticated/cover-letter': typeof AuthenticatedCoverLetterRoute
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
-  '/_authenticated/documents': typeof AuthenticatedDocumentsRoute
   '/_authenticated/evaluation': typeof AuthenticatedEvaluationRoute
+  '/_authenticated/interview': typeof AuthenticatedInterviewRoute
   '/_authenticated/resumes': typeof AuthenticatedResumesRoute
-  '/_authenticated/review': typeof AuthenticatedReviewRoute
   '/_authenticated/settings': typeof AuthenticatedSettingsRoute
   '/_authenticated/studio': typeof AuthenticatedStudioRoute
   '/_authenticated/upload': typeof AuthenticatedUploadRoute
   '/api/agent': typeof ApiAgentRoute
   '/_authenticated/jobs/$jobId': typeof AuthenticatedJobsJobIdRoute
   '/_authenticated/jobs/': typeof AuthenticatedJobsIndexRoute
-  '/api/public/extension/agent-plan': typeof ApiPublicExtensionAgentPlanRoute
-  '/api/public/extension/context': typeof ApiPublicExtensionContextRoute
-  '/api/public/extension/event': typeof ApiPublicExtensionEventRoute
-  '/api/public/extension/import-job': typeof ApiPublicExtensionImportJobRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -228,21 +190,17 @@ export interface FileRouteTypes {
     | '/analytics'
     | '/applications'
     | '/career'
+    | '/cover-letter'
     | '/dashboard'
-    | '/documents'
     | '/evaluation'
+    | '/interview'
     | '/resumes'
-    | '/review'
     | '/settings'
     | '/studio'
     | '/upload'
     | '/api/agent'
     | '/jobs/$jobId'
     | '/jobs/'
-    | '/api/public/extension/agent-plan'
-    | '/api/public/extension/context'
-    | '/api/public/extension/event'
-    | '/api/public/extension/import-job'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -251,21 +209,17 @@ export interface FileRouteTypes {
     | '/analytics'
     | '/applications'
     | '/career'
+    | '/cover-letter'
     | '/dashboard'
-    | '/documents'
     | '/evaluation'
+    | '/interview'
     | '/resumes'
-    | '/review'
     | '/settings'
     | '/studio'
     | '/upload'
     | '/api/agent'
     | '/jobs/$jobId'
     | '/jobs'
-    | '/api/public/extension/agent-plan'
-    | '/api/public/extension/context'
-    | '/api/public/extension/event'
-    | '/api/public/extension/import-job'
   id:
     | '__root__'
     | '/'
@@ -275,21 +229,17 @@ export interface FileRouteTypes {
     | '/_authenticated/analytics'
     | '/_authenticated/applications'
     | '/_authenticated/career'
+    | '/_authenticated/cover-letter'
     | '/_authenticated/dashboard'
-    | '/_authenticated/documents'
     | '/_authenticated/evaluation'
+    | '/_authenticated/interview'
     | '/_authenticated/resumes'
-    | '/_authenticated/review'
     | '/_authenticated/settings'
     | '/_authenticated/studio'
     | '/_authenticated/upload'
     | '/api/agent'
     | '/_authenticated/jobs/$jobId'
     | '/_authenticated/jobs/'
-    | '/api/public/extension/agent-plan'
-    | '/api/public/extension/context'
-    | '/api/public/extension/event'
-    | '/api/public/extension/import-job'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -298,10 +248,6 @@ export interface RootRouteChildren {
   LoginRoute: typeof LoginRoute
   RegisterRoute: typeof RegisterRoute
   ApiAgentRoute: typeof ApiAgentRoute
-  ApiPublicExtensionAgentPlanRoute: typeof ApiPublicExtensionAgentPlanRoute
-  ApiPublicExtensionContextRoute: typeof ApiPublicExtensionContextRoute
-  ApiPublicExtensionEventRoute: typeof ApiPublicExtensionEventRoute
-  ApiPublicExtensionImportJobRoute: typeof ApiPublicExtensionImportJobRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -362,18 +308,18 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedSettingsRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
-    '/_authenticated/review': {
-      id: '/_authenticated/review'
-      path: '/review'
-      fullPath: '/review'
-      preLoaderRoute: typeof AuthenticatedReviewRouteImport
-      parentRoute: typeof AuthenticatedRoute
-    }
     '/_authenticated/resumes': {
       id: '/_authenticated/resumes'
       path: '/resumes'
       fullPath: '/resumes'
       preLoaderRoute: typeof AuthenticatedResumesRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/interview': {
+      id: '/_authenticated/interview'
+      path: '/interview'
+      fullPath: '/interview'
+      preLoaderRoute: typeof AuthenticatedInterviewRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/evaluation': {
@@ -383,18 +329,18 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedEvaluationRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
-    '/_authenticated/documents': {
-      id: '/_authenticated/documents'
-      path: '/documents'
-      fullPath: '/documents'
-      preLoaderRoute: typeof AuthenticatedDocumentsRouteImport
-      parentRoute: typeof AuthenticatedRoute
-    }
     '/_authenticated/dashboard': {
       id: '/_authenticated/dashboard'
       path: '/dashboard'
       fullPath: '/dashboard'
       preLoaderRoute: typeof AuthenticatedDashboardRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/cover-letter': {
+      id: '/_authenticated/cover-letter'
+      path: '/cover-letter'
+      fullPath: '/cover-letter'
+      preLoaderRoute: typeof AuthenticatedCoverLetterRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/career': {
@@ -432,34 +378,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedJobsJobIdRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
-    '/api/public/extension/import-job': {
-      id: '/api/public/extension/import-job'
-      path: '/api/public/extension/import-job'
-      fullPath: '/api/public/extension/import-job'
-      preLoaderRoute: typeof ApiPublicExtensionImportJobRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/public/extension/event': {
-      id: '/api/public/extension/event'
-      path: '/api/public/extension/event'
-      fullPath: '/api/public/extension/event'
-      preLoaderRoute: typeof ApiPublicExtensionEventRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/public/extension/context': {
-      id: '/api/public/extension/context'
-      path: '/api/public/extension/context'
-      fullPath: '/api/public/extension/context'
-      preLoaderRoute: typeof ApiPublicExtensionContextRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/public/extension/agent-plan': {
-      id: '/api/public/extension/agent-plan'
-      path: '/api/public/extension/agent-plan'
-      fullPath: '/api/public/extension/agent-plan'
-      preLoaderRoute: typeof ApiPublicExtensionAgentPlanRouteImport
-      parentRoute: typeof rootRouteImport
-    }
   }
 }
 
@@ -467,11 +385,11 @@ interface AuthenticatedRouteChildren {
   AuthenticatedAnalyticsRoute: typeof AuthenticatedAnalyticsRoute
   AuthenticatedApplicationsRoute: typeof AuthenticatedApplicationsRoute
   AuthenticatedCareerRoute: typeof AuthenticatedCareerRoute
+  AuthenticatedCoverLetterRoute: typeof AuthenticatedCoverLetterRoute
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
-  AuthenticatedDocumentsRoute: typeof AuthenticatedDocumentsRoute
   AuthenticatedEvaluationRoute: typeof AuthenticatedEvaluationRoute
+  AuthenticatedInterviewRoute: typeof AuthenticatedInterviewRoute
   AuthenticatedResumesRoute: typeof AuthenticatedResumesRoute
-  AuthenticatedReviewRoute: typeof AuthenticatedReviewRoute
   AuthenticatedSettingsRoute: typeof AuthenticatedSettingsRoute
   AuthenticatedStudioRoute: typeof AuthenticatedStudioRoute
   AuthenticatedUploadRoute: typeof AuthenticatedUploadRoute
@@ -483,11 +401,11 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedAnalyticsRoute: AuthenticatedAnalyticsRoute,
   AuthenticatedApplicationsRoute: AuthenticatedApplicationsRoute,
   AuthenticatedCareerRoute: AuthenticatedCareerRoute,
+  AuthenticatedCoverLetterRoute: AuthenticatedCoverLetterRoute,
   AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
-  AuthenticatedDocumentsRoute: AuthenticatedDocumentsRoute,
   AuthenticatedEvaluationRoute: AuthenticatedEvaluationRoute,
+  AuthenticatedInterviewRoute: AuthenticatedInterviewRoute,
   AuthenticatedResumesRoute: AuthenticatedResumesRoute,
-  AuthenticatedReviewRoute: AuthenticatedReviewRoute,
   AuthenticatedSettingsRoute: AuthenticatedSettingsRoute,
   AuthenticatedStudioRoute: AuthenticatedStudioRoute,
   AuthenticatedUploadRoute: AuthenticatedUploadRoute,
@@ -505,10 +423,6 @@ const rootRouteChildren: RootRouteChildren = {
   LoginRoute: LoginRoute,
   RegisterRoute: RegisterRoute,
   ApiAgentRoute: ApiAgentRoute,
-  ApiPublicExtensionAgentPlanRoute: ApiPublicExtensionAgentPlanRoute,
-  ApiPublicExtensionContextRoute: ApiPublicExtensionContextRoute,
-  ApiPublicExtensionEventRoute: ApiPublicExtensionEventRoute,
-  ApiPublicExtensionImportJobRoute: ApiPublicExtensionImportJobRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

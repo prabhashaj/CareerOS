@@ -61,12 +61,19 @@ function parseMarkdown(src: string): Block[] {
   return blocks;
 }
 
-export async function downloadTextAsPdf(opts: {
-  filename: string;
-  title?: string;
-  body: string;
-}) {
-  let safeFilename = opts.filename
+export async function downloadTextAsPdf(
+  bodyOrOpts: string | { filename: string; title?: string; body: string },
+  filenameArg?: string,
+) {
+  const opts =
+    typeof bodyOrOpts === "string"
+      ? {
+          body: bodyOrOpts,
+          filename: filenameArg || "document.pdf",
+        }
+      : bodyOrOpts;
+
+  let safeFilename = (opts.filename || "document.pdf")
     .replace(/[\/\\?%*:|"<>]/g, "-") // replace invalid file system characters with hyphen
     .replace(/\s+/g, "_")            // replace whitespace with underscore
     .replace(/__+/g, "_")            // compress multiple underscores

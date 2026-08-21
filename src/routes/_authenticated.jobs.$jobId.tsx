@@ -67,7 +67,6 @@ function JobDetail() {
   const app = useQuery({ queryKey: ["app-for-job", jobId], queryFn: () => getAppFn({ data: { job_id: jobId } }) });
 
   const [busy, setBusy] = useState<string | null>(null);
-  const [agentDialogOpen, setAgentDialogOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const [question, setQuestion] = useState("");
   const [coverDraft, setCoverDraft] = useState("");
@@ -144,19 +143,23 @@ function JobDetail() {
         </div>
 
         <div className="flex flex-wrap gap-2">
-          <Button variant="default" className="shadow-xs font-semibold" onClick={() => setAgentDialogOpen(true)}>
-            <Zap className="mr-2 h-4 w-4" /> Auto-apply in Chrome
-          </Button>
-          <Button asChild variant="outline" className="shadow-xs font-semibold">
+          <Button asChild variant="default" className="shadow-sm font-semibold rounded-xl">
             <Link to="/studio" search={{ jobId }}>
-              <Sparkles className="mr-2 h-4 w-4 text-primary" /> Tailor in Studio
+              <Sparkles className="mr-1.5 h-4 w-4" /> Tailor Resume in Studio
             </Link>
           </Button>
-          <Button variant="outline" disabled={!!busy} onClick={() => run("rank", () => rank({ data: { job_id: jobId, persist: true } }), "Ranked")}>
-            <Sparkles className="mr-2 h-4 w-4" /> {busy === "rank" ? "Ranking…" : "Rank"}
+          <Button asChild variant="outline" className="shadow-xs font-semibold rounded-xl">
+            <Link to="/cover-letter" search={{ jobId }}>
+              <FileText className="mr-1.5 h-4 w-4 text-primary" /> Cover Letter
+            </Link>
           </Button>
-          <Button disabled={!!busy} onClick={() => run("pipeline", () => pipeline({ data: { job_id: jobId } }), "Application drafted")}>
-            <Wand2 className="mr-2 h-4 w-4" /> {busy === "pipeline" ? "Working…" : "Draft full application"}
+          <Button asChild variant="outline" className="shadow-xs font-semibold rounded-xl">
+            <Link to="/interview" search={{ jobId }}>
+              <Mic className="mr-1.5 h-4 w-4 text-primary" /> Interview Prep
+            </Link>
+          </Button>
+          <Button variant="ghost" disabled={!!busy} onClick={() => run("rank", () => rank({ data: { job_id: jobId, persist: true } }), "Ranked")} className="rounded-xl">
+            <Zap className="mr-1.5 h-4 w-4 text-primary" /> {busy === "rank" ? "Scoring…" : "Re-score"}
           </Button>
         </div>
       </div>
@@ -579,71 +582,6 @@ function JobDetail() {
           </div>
         </div>
       )}
-
-      {/* Chrome Agent Modal */}
-      <Dialog open={agentDialogOpen} onOpenChange={setAgentDialogOpen}>
-        <DialogContent className="w-[calc(100vw-2rem)] sm:max-w-lg border border-border bg-card text-foreground shadow-soft overflow-hidden p-5 sm:p-6">
-          <DialogHeader>
-            <div className="flex items-center gap-2.5">
-              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                <Zap className="h-5 w-5" />
-              </div>
-              <div className="min-w-0 flex-1">
-                <DialogTitle className="font-display text-lg sm:text-xl truncate">Auto-Apply with Chrome Agent</DialogTitle>
-                <DialogDescription className="text-xs text-muted-foreground mt-0.5">
-                  Fill application fields and tailored screening answers directly in Chrome via CDP.
-                </DialogDescription>
-              </div>
-            </div>
-          </DialogHeader>
-
-          <div className="mt-3 space-y-3 w-full min-w-0">
-            {j.source_url && (
-              <div className="rounded-lg border border-border bg-background/60 p-3 space-y-2 w-full min-w-0">
-                <div className="text-xs font-semibold text-foreground flex items-center justify-between">
-                  <span>Method 1: Direct Browser Page</span>
-                  <Badge variant="outline" className="text-[10px]">Active Job</Badge>
-                </div>
-                <p className="text-xs text-muted-foreground leading-relaxed">
-                  Open the application page and use the CareerOS extension for 1-click native autofill:
-                </p>
-                <Button asChild size="sm" className="w-full">
-                  <a href={j.source_url} target="_blank" rel="noreferrer">
-                    <ExternalLink className="mr-1.5 h-3.5 w-3.5" /> Open Application in Chrome
-                  </a>
-                </Button>
-              </div>
-            )}
-
-            <div className="rounded-lg border border-border bg-background/60 p-3 space-y-2 w-full min-w-0">
-              <div className="text-xs font-semibold text-foreground flex items-center gap-1.5">
-                <Terminal className="h-3.5 w-3.5 text-primary shrink-0" /> Method 2: Local CLI Agent (`chrome-agent`)
-              </div>
-              <p className="text-xs text-muted-foreground leading-relaxed">
-                Connects to your Chrome session on port 9222 and applies with tailored Knowledge Base answers:
-              </p>
-              <div className="flex items-center gap-2 rounded-md bg-secondary/50 p-2 font-mono text-[11px] text-foreground border border-border w-full min-w-0 overflow-hidden">
-                <code className="flex-1 min-w-0 truncate block text-[11px]">
-                  {`python scripts/chrome_agent_runner.py --url "${j.source_url || "https://..."}"`}
-                </code>
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  className="h-6 w-6 shrink-0"
-                  onClick={() => {
-                    navigator.clipboard.writeText(`python scripts/chrome_agent_runner.py --url "${j.source_url || ""}"`);
-                    setCopied(true);
-                    toast.success("Command copied to clipboard");
-                    setTimeout(() => setCopied(false), 2000);
-                  }}
-                >
-                  {copied ? <Check className="h-3.5 w-3.5 text-primary" /> : <Copy className="h-3.5 w-3.5" />}
-                </Button>
-              </div>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

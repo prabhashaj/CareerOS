@@ -8,6 +8,8 @@ import {
   callAiJson,
 } from "@/lib/agent.server";
 
+import { retrieveCandidateContext } from "@/lib/candidate-context.server";
+
 export const tailorResume = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: unknown) =>
@@ -22,7 +24,17 @@ export const tailorResume = createServerFn({ method: "POST" })
       })
       .parse(input),
   )
-  .handler(async ({ data }) => {
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+
+    // Load rich Knowledge Hub + uploaded resumes + profile context
+    const knowledgeHubContext = await retrieveCandidateContext(
+      supabase,
+      userId,
+      `${data.jobTitle || ""} ${data.company || ""} ${data.jobDescription || ""}`.trim() || "candidate resume achievements skills",
+      16_000,
+    );
+
     const jobBlock = data.jobDescription
       ? `TARGET JOB\nTitle: ${data.jobTitle ?? "unknown"}\nCompany: ${data.company ?? "unknown"}\nDescription:\n${data.jobDescription.slice(0, 50000)}`
       : "No specific job description was supplied — improve the resume generally.";
@@ -38,7 +50,10 @@ export const tailorResume = createServerFn({ method: "POST" })
       questions: string[];
     }>(
       [
-        { role: "system", content: `${AGENT_RULES}\n${research}` },
+        {
+          role: "system",
+          content: `${AGENT_RULES}\n${research}\n\nKNOWLEDGE HUB & VERIFIED CANDIDATE PROFILE:\nUse facts, verified metrics, achievements, skills, and projects strictly from the Candidate Profile and Knowledge Hub below. Do not fabricate unverifiable experience.\n${knowledgeHubContext}`,
+        },
         {
           role: "user",
           content: `${jobBlock}\n\nCURRENT RESUME JSON\n${JSON.stringify(data.resume)}\n\nUSER REQUEST\n${data.instruction}\n\nReturn the complete updated resume JSON (all sections, even unchanged ones), a short reply, a changelog, and any clarifying questions.`,

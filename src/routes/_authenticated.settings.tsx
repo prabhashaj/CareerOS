@@ -263,116 +263,87 @@ function SettingsPage() {
   };
 
   return (
-    <div className="p-8">
-      <h1 className="text-3xl font-semibold tracking-tight">Settings</h1>
-      <p className="mt-1 text-sm text-muted-foreground">Profile and job preferences power AI matching.</p>
+    <div className="mx-auto max-w-5xl p-6 sm:p-10 space-y-8">
+      <div>
+        <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1 text-xs text-muted-foreground">
+          <Sparkles className="size-3.5 text-primary" /> Profile & Engine Preferences
+        </div>
+        <h1 className="font-display text-3xl sm:text-4xl font-bold tracking-tight text-foreground">
+          Settings & Candidate Profile
+        </h1>
+        <p className="mt-1 text-sm text-muted-foreground max-w-2xl leading-relaxed">
+          Manage your personal details, target roles, writing style voice, and profile enrichment sources.
+        </p>
+      </div>
 
-      <form onSubmit={handleSubmit} className="mt-8 max-w-2xl space-y-4 rounded-xl border border-border bg-card p-6">
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div>
-            <Label htmlFor="fn">Full name</Label>
-            <Input id="fn" value={form.full_name} onChange={(e) => setForm({ ...form, full_name: e.target.value })} />
-          </div>
-          <div>
-            <Label htmlFor="h">Headline</Label>
-            <Input id="h" value={form.headline} onChange={(e) => setForm({ ...form, headline: e.target.value })} placeholder="Senior Frontend Engineer" />
-          </div>
-          <div>
-            <Label htmlFor="loc">Current location</Label>
-            <Input id="loc" value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value })} />
-          </div>
-          <div>
-            <Label htmlFor="ph">Phone</Label>
-            <Input id="ph" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
-          </div>
-          <div>
-            <Label htmlFor="li">LinkedIn URL</Label>
-            <Input id="li" type="url" value={form.linkedin_url} onChange={(e) => setForm({ ...form, linkedin_url: e.target.value })} />
-          </div>
-          <div>
-            <Label htmlFor="pf">Portfolio URL</Label>
-            <Input id="pf" type="url" value={form.portfolio_url} onChange={(e) => setForm({ ...form, portfolio_url: e.target.value })} />
-          </div>
+      <form onSubmit={handleSubmit} className="space-y-5 rounded-2xl border border-border bg-card p-6 sm:p-8 shadow-xs">
+        <div className="border-b border-border/70 pb-3">
+          <h2 className="font-display text-lg font-bold text-foreground">Core Candidate Details</h2>
+          <p className="text-xs text-muted-foreground">Used across tailored resumes and cover letter headers.</p>
         </div>
 
-        <div>
-          <Label htmlFor="roles">Target roles (comma-separated)</Label>
-          <Input id="roles" value={form.target_roles_text} onChange={(e) => setForm({ ...form, target_roles_text: e.target.value })} placeholder="Frontend Engineer, Full Stack Engineer" />
-        </div>
-        <div>
-          <Label htmlFor="locs">Target locations (comma-separated)</Label>
-          <Input id="locs" value={form.target_locations_text} onChange={(e) => setForm({ ...form, target_locations_text: e.target.value })} placeholder="Remote, New York, London" />
-        </div>
         <div className="grid gap-4 sm:grid-cols-2">
-          <div>
-            <Label htmlFor="wa">Work authorization</Label>
-            <Input id="wa" value={form.work_authorization} onChange={(e) => setForm({ ...form, work_authorization: e.target.value })} placeholder="US citizen / EU work permit / etc." />
+          <div className="space-y-1">
+            <Label htmlFor="fn" className="text-xs font-semibold text-muted-foreground">Full Name</Label>
+            <Input id="fn" value={form.full_name} onChange={(e) => setForm({ ...form, full_name: e.target.value })} className="h-9 text-xs rounded-xl" />
           </div>
-          <div>
-            <Label htmlFor="ms">Minimum salary (annual)</Label>
-            <Input id="ms" type="number" value={form.min_salary} onChange={(e) => setForm({ ...form, min_salary: e.target.value })} />
+          <div className="space-y-1">
+            <Label htmlFor="h" className="text-xs font-semibold text-muted-foreground">Professional Headline</Label>
+            <Input id="h" value={form.headline} onChange={(e) => setForm({ ...form, headline: e.target.value })} placeholder="Senior Full Stack Engineer" className="h-9 text-xs rounded-xl" />
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="loc" className="text-xs font-semibold text-muted-foreground">Location</Label>
+            <Input id="loc" value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value })} placeholder="San Francisco, CA / Remote" className="h-9 text-xs rounded-xl" />
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="ph" className="text-xs font-semibold text-muted-foreground">Phone Number</Label>
+            <Input id="ph" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} placeholder="+1 (555) 000-0000" className="h-9 text-xs rounded-xl" />
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="li" className="text-xs font-semibold text-muted-foreground">LinkedIn URL</Label>
+            <Input id="li" type="url" value={form.linkedin_url} onChange={(e) => setForm({ ...form, linkedin_url: e.target.value })} placeholder="https://linkedin.com/in/username" className="h-9 text-xs rounded-xl" />
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="pf" className="text-xs font-semibold text-muted-foreground">Portfolio / GitHub URL</Label>
+            <Input id="pf" type="url" value={form.portfolio_url} onChange={(e) => setForm({ ...form, portfolio_url: e.target.value })} placeholder="https://yourportfolio.com" className="h-9 text-xs rounded-xl" />
           </div>
         </div>
-        <label className="flex items-center gap-2 text-sm">
-          <input type="checkbox" checked={form.requires_sponsorship} onChange={(e) => setForm({ ...form, requires_sponsorship: e.target.checked })} />
-          I require visa sponsorship
+
+        <div className="space-y-1">
+          <Label htmlFor="roles" className="text-xs font-semibold text-muted-foreground">Target Roles (comma-separated)</Label>
+          <Input id="roles" value={form.target_roles_text} onChange={(e) => setForm({ ...form, target_roles_text: e.target.value })} placeholder="Staff Platform Engineer, Lead Backend Engineer" className="h-9 text-xs rounded-xl" />
+        </div>
+        <div className="space-y-1">
+          <Label htmlFor="locs" className="text-xs font-semibold text-muted-foreground">Target Locations (comma-separated)</Label>
+          <Input id="locs" value={form.target_locations_text} onChange={(e) => setForm({ ...form, target_locations_text: e.target.value })} placeholder="Remote, San Francisco, New York" className="h-9 text-xs rounded-xl" />
+        </div>
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="space-y-1">
+            <Label htmlFor="wa" className="text-xs font-semibold text-muted-foreground">Work Authorization</Label>
+            <Input id="wa" value={form.work_authorization} onChange={(e) => setForm({ ...form, work_authorization: e.target.value })} placeholder="US Citizen / Green Card / STEM OPT" className="h-9 text-xs rounded-xl" />
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="ms" className="text-xs font-semibold text-muted-foreground">Minimum Annual Target Salary ($)</Label>
+            <Input id="ms" type="number" value={form.min_salary} onChange={(e) => setForm({ ...form, min_salary: e.target.value })} placeholder="160000" className="h-9 text-xs rounded-xl" />
+          </div>
+        </div>
+
+        <label className="flex items-center gap-2 text-xs font-medium text-foreground cursor-pointer pt-1">
+          <input type="checkbox" checked={form.requires_sponsorship} onChange={(e) => setForm({ ...form, requires_sponsorship: e.target.checked })} className="rounded accent-primary" />
+          <span>I require visa sponsorship now or in the future</span>
         </label>
 
-        <Button type="submit">Save profile</Button>
+        <div className="pt-2">
+          <Button type="submit" className="font-bold text-xs h-9 px-5 rounded-xl shadow-xs">
+            Save Profile Settings
+          </Button>
+        </div>
       </form>
 
-      <ExtensionSection />
       <ExpandSection />
       <WritingStyleSection currentStyle={(data?.preferences as { writing_style?: WritingStyle } | null)?.writing_style ?? null} />
       <DangerZone />
-    </div>
-  );
-}
-
-function ExtensionSection() {
-  const { session } = useAuth();
-  const [synced, setSynced] = useState(false);
-
-  const connectExtension = () => {
-    if (!session?.access_token) {
-      toast.error("Please sign in first");
-      return;
-    }
-    const payload = {
-      access_token: session.access_token,
-      refresh_token: session.refresh_token,
-      user: session.user,
-      app_url: window.location.origin,
-      api_url: window.location.origin,
-    };
-    window.postMessage({ type: "JOBPILOT_AUTH", payload }, "*");
-    window.postMessage({ type: "CAREEROS_AUTH", payload }, "*");
-    setSynced(true);
-    toast.success("Extension connected successfully! Open the extension popup to verify.");
-    setTimeout(() => setSynced(false), 3000);
-  };
-
-  return (
-    <div className="mt-8 max-w-2xl space-y-4 rounded-xl border border-border bg-card p-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-lg font-medium flex items-center gap-2">
-            <Zap className="h-5 w-5 text-primary" /> CareerOS Chrome Extension
-          </h2>
-          <p className="text-sm text-muted-foreground mt-0.5">
-            Sync your CareerOS session with the browser extension for 1-click job importing and autofill.
-          </p>
-        </div>
-      </div>
-      <div className="flex flex-wrap items-center gap-3">
-        <Button onClick={connectExtension} className="font-semibold">
-          {synced ? <Check className="mr-2 h-4 w-4" /> : <Zap className="mr-2 h-4 w-4" />}
-          {synced ? "Connected!" : "Connect Extension to Account"}
-        </Button>
-        <span className="text-xs text-muted-foreground">
-          Make sure the extension is installed in Chrome
-        </span>
-      </div>
     </div>
   );
 }

@@ -3,28 +3,23 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import {
   ClipboardCheck,
-  Bot,
   CheckCircle2,
-  X,
   Bookmark,
-  PenLine,
   Send,
-  Rocket,
   CalendarCheck2,
   Trophy,
   XCircle,
   Building2,
   Sparkles,
   ChevronRight,
+  FileText,
+  Mail,
+  Mic,
+  Plus,
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
-import { listApplications } from "@/lib/applications.functions";
-import {
-  draftAutomationPlan,
-  confirmSubmission,
-  cancelAutomation,
-} from "@/lib/automation.functions";
+import { listApplications, updateApplicationStatus, type ApplicationStatus } from "@/lib/applications.functions";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -35,20 +30,22 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/_authenticated/applications")({
-  head: () => ({ meta: [{ title: "Applications — CareerOS" }] }),
+  head: () => ({ meta: [{ title: "Applications Pipeline — CareerOS" }] }),
   component: ApplicationsPage,
 });
 
 type StatusKey =
   | "saved"
-  | "drafting"
-  | "ready_to_apply"
   | "submitted"
   | "interview"
   | "offer"
@@ -59,40 +56,28 @@ const STATUS_META: Record<
   { label: string; icon: typeof Bookmark; tone: string; description: string }
 > = {
   saved: {
-    label: "Saved",
+    label: "Saved / Preparing",
     icon: Bookmark,
     tone: "text-muted-foreground",
-    description: "Opportunities you've bookmarked.",
-  },
-  drafting: {
-    label: "Drafting",
-    icon: PenLine,
-    tone: "text-accent-foreground",
-    description: "Plans in progress — review before sending.",
-  },
-  ready_to_apply: {
-    label: "Ready to apply",
-    icon: Rocket,
-    tone: "text-primary",
-    description: "Polished and waiting on your green light.",
+    description: "Opportunities you're tailoring assets for.",
   },
   submitted: {
     label: "Submitted",
     icon: Send,
     tone: "text-primary",
-    description: "Out the door. Waiting on a response.",
+    description: "Applied with tailored resume & cover letter.",
   },
   interview: {
     label: "Interview",
     icon: CalendarCheck2,
     tone: "text-success",
-    description: "Conversations underway.",
+    description: "Conversations & rounds underway.",
   },
   offer: {
     label: "Offer",
     icon: Trophy,
     tone: "text-success",
-    description: "The good stuff.",
+    description: "Offers received and in negotiation.",
   },
   rejected: {
     label: "Closed",
@@ -104,8 +89,6 @@ const STATUS_META: Record<
 
 const STATUS_ORDER: StatusKey[] = [
   "saved",
-  "drafting",
-  "ready_to_apply",
   "submitted",
   "interview",
   "offer",
@@ -117,35 +100,21 @@ type AppRow = NonNullable<Awaited<ReturnType<typeof listApplications>>>[number];
 function ApplicationsPage() {
   const qc = useQueryClient();
   const fn = useServerFn(listApplications);
-  const draftFn = useServerFn(draftAutomationPlan);
-  const cancelFn = useServerFn(cancelAutomation);
+  const updateStatusFn = useServerFn(updateApplicationStatus);
+
   const { data, isLoading } = useQuery({
     queryKey: ["applications"],
     queryFn: () => fn(),
   });
 
-  const [confirmTarget, setConfirmTarget] = useState<AppRow | null>(null);
   const [activeFilter, setActiveFilter] = useState<StatusKey | "all">("all");
 
-  const drafting = useMutation({
-    mutationFn: (application_id: string) =>
-      draftFn({ data: { application_id } }),
-    onSuccess: (res) => {
-      toast.success(
-        `Plan ready: ${res.plan.steps.length} steps. Review and approve.`,
-      );
-      qc.invalidateQueries({ queryKey: ["applications"] });
-      qc.invalidateQueries({ queryKey: ["review-queue"] });
-    },
-    onError: (e: Error) => toast.error(e.message),
-  });
-
-  const cancelling = useMutation({
-    mutationFn: (application_id: string) =>
-      cancelFn({ data: { application_id } }),
+  const updateStatus = useMutation({
+    mutationFn: ({ id, status }: { id: string; status: ApplicationStatus }) =>
+      updateStatusFn({ data: { id, status } }),
     onSuccess: () => {
-      toast.success("Automation cancelled");
-      qc.invalidateQueries({ queryKey: ["applications"] });
+      toast.success("Application status updated");
+      void qc.invalidateQueries({ queryKey: ["applications"] });
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -154,7 +123,10 @@ function ApplicationsPage() {
     const m = new Map<StatusKey, AppRow[]>();
     STATUS_ORDER.forEach((s) => m.set(s, []));
     (data ?? []).forEach((a) => {
-      const key = (a.status as StatusKey) ?? "saved";
+      const rawStatus = (a.status || "saved") as string;
+      const key: StatusKey = STATUS_ORDER.includes(rawStatus as StatusKey)
+        ? (rawStatus as StatusKey)
+        : "saved";
       const list = m.get(key) ?? [];
       list.push(a);
       m.set(key, list);
@@ -164,8 +136,7 @@ function ApplicationsPage() {
 
   const total = data?.length ?? 0;
   const active =
-    (grouped.get("drafting")?.length ?? 0) +
-    (grouped.get("ready_to_apply")?.length ?? 0) +
+    (grouped.get("saved")?.length ?? 0) +
     (grouped.get("submitted")?.length ?? 0) +
     (grouped.get("interview")?.length ?? 0);
   const wins = grouped.get("offer")?.length ?? 0;
@@ -185,36 +156,41 @@ function ApplicationsPage() {
       : STATUS_ORDER.filter((s) => s === activeFilter);
 
   return (
-    <div className="mx-auto max-w-6xl px-6 py-10 md:px-10">
+    <div className="mx-auto max-w-6xl px-6 py-10 md:px-10 space-y-8">
       {/* Header */}
-      <header className="mb-8">
+      <header>
         <div className="flex flex-wrap items-end justify-between gap-6">
           <div>
             <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1 text-xs text-muted-foreground">
-              <Sparkles className="h-3 w-3 text-accent" />
+              <ClipboardCheck className="h-3 w-3 text-primary" />
               Pipeline
             </div>
-            <h1 className="font-display text-4xl tracking-tight">
-              Applications
+            <h1 className="font-display text-4xl tracking-tight font-bold">
+              Applications Tracker
             </h1>
-            <p className="mt-2 max-w-xl text-sm text-muted-foreground">
-              Every opportunity, from bookmark to offer. Draft browser-assisted
-              submissions and approve each step before anything goes out.
+            <p className="mt-1 max-w-xl text-sm text-muted-foreground">
+              Track progress from initial JD tailoring to interview rounds and offers.
             </p>
           </div>
+
+          <Link to="/jobs">
+            <Button size="sm" className="font-bold text-xs gap-1.5 rounded-xl">
+              <Plus className="size-4" /> Add Target Role
+            </Button>
+          </Link>
         </div>
 
         {/* Stats */}
         <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <StatCard label="Total" value={total} />
-          <StatCard label="In flight" value={active} accent />
+          <StatCard label="Total Tracked" value={total} />
+          <StatCard label="Active Pipeline" value={active} accent />
           <StatCard label="Offers" value={wins} tone="success" />
-          <StatCard label="Response rate" value={`${responseRate}%`} />
+          <StatCard label="Interview Rate" value={`${responseRate}%`} />
         </div>
       </header>
 
       {/* Filter pills */}
-      <div className="mb-6 flex flex-wrap items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <FilterPill
           label="All"
           count={total}
@@ -246,17 +222,19 @@ function ApplicationsPage() {
           ))}
         </div>
       ) : !data || data.length === 0 ? (
-        <div className="rounded-2xl border border-dashed border-border bg-card/50 p-16 text-center">
-          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-secondary">
+        <div className="rounded-3xl border border-dashed border-border bg-card/40 p-16 text-center space-y-4">
+          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-secondary">
             <ClipboardCheck className="h-7 w-7 text-primary" />
           </div>
-          <h3 className="font-display text-xl">No applications yet</h3>
-          <p className="mx-auto mt-2 max-w-sm text-sm text-muted-foreground">
-            Rank a job and draft an application to start tracking it here.
-          </p>
+          <div className="space-y-1 max-w-sm mx-auto">
+            <h3 className="font-display text-xl font-bold">No applications tracked yet</h3>
+            <p className="text-sm text-muted-foreground">
+              Add a target role and start tailoring your resume or cover letter to track it here.
+            </p>
+          </div>
           <Link to="/jobs">
-            <Button className="mt-5" size="sm">
-              Browse jobs
+            <Button size="sm" className="font-semibold text-xs rounded-xl">
+              Add Target Role
               <ChevronRight className="ml-1 h-4 w-4" />
             </Button>
           </Link>
@@ -273,7 +251,7 @@ function ApplicationsPage() {
                 <div className="mb-3 flex items-center gap-3">
                   <div
                     className={cn(
-                      "flex h-9 w-9 items-center justify-center rounded-lg bg-secondary",
+                      "flex h-8 w-8 items-center justify-center rounded-lg bg-secondary",
                       meta.tone,
                     )}
                   >
@@ -281,31 +259,91 @@ function ApplicationsPage() {
                   </div>
                   <div className="flex-1">
                     <div className="flex items-center gap-2">
-                      <h2 className="font-display text-lg leading-none">
+                      <h2 className="font-display text-lg font-bold leading-none">
                         {meta.label}
                       </h2>
                       <Badge variant="secondary" className="text-xs">
                         {items.length}
                       </Badge>
                     </div>
-                    <p className="mt-0.5 text-xs text-muted-foreground">
-                      {meta.description}
-                    </p>
                   </div>
                 </div>
 
                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                   {items.map((a) => (
-                    <ApplicationCard
+                    <div
                       key={a.id}
-                      app={a}
-                      status={s}
-                      onDraft={() => drafting.mutate(a.id)}
-                      onCancel={() => cancelling.mutate(a.id)}
-                      onConfirm={() => setConfirmTarget(a)}
-                      draftPending={drafting.isPending}
-                      cancelPending={cancelling.isPending}
-                    />
+                      className="group relative overflow-hidden rounded-2xl border border-border bg-card p-5 transition-all hover:border-primary/40 hover:shadow-sm space-y-4"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0 flex-1">
+                          <Link
+                            to="/jobs/$jobId"
+                            params={{ jobId: a.job_id }}
+                            className="font-display text-sm font-bold leading-snug group-hover:text-primary transition-colors line-clamp-1"
+                          >
+                            {a.job?.title ?? "Untitled role"}
+                          </Link>
+                          <div className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground">
+                            <Building2 className="h-3 w-3 shrink-0" />
+                            <span className="truncate">{a.job?.company ?? "Unknown company"}</span>
+                          </div>
+                        </div>
+
+                        {a.match_score != null && (
+                          <Badge variant="default" className="text-[10px] px-1.5 py-0">
+                            {Math.round(Number(a.match_score) * 100)}% match
+                          </Badge>
+                        )}
+                      </div>
+
+                      {/* 3 Pillar Shortcuts */}
+                      <div className="grid grid-cols-3 gap-1.5 pt-2 border-t border-border/60">
+                        <Link
+                          to="/studio"
+                          search={{ jobId: a.job_id }}
+                          className="flex items-center justify-center gap-1 py-1.5 px-2 rounded-lg bg-secondary/40 hover:bg-primary hover:text-primary-foreground text-[10px] font-semibold transition-colors"
+                        >
+                          <FileText className="size-3" /> Resume
+                        </Link>
+                        <Link
+                          to="/cover-letter"
+                          search={{ jobId: a.job_id }}
+                          className="flex items-center justify-center gap-1 py-1.5 px-2 rounded-lg bg-secondary/40 hover:bg-primary hover:text-primary-foreground text-[10px] font-semibold transition-colors"
+                        >
+                          <Mail className="size-3" /> Letter
+                        </Link>
+                        <Link
+                          to="/interview"
+                          search={{ jobId: a.job_id }}
+                          className="flex items-center justify-center gap-1 py-1.5 px-2 rounded-lg bg-secondary/40 hover:bg-primary hover:text-primary-foreground text-[10px] font-semibold transition-colors"
+                        >
+                          <Mic className="size-3" /> Prep
+                        </Link>
+                      </div>
+
+                      {/* Status Selector */}
+                      <div className="pt-2 border-t border-border/60 flex items-center justify-between">
+                        <span className="text-[10px] uppercase font-bold text-muted-foreground">Status:</span>
+                        <Select
+                          value={a.status}
+                          onValueChange={(val) =>
+                            updateStatus.mutate({ id: a.id, status: val as ApplicationStatus })
+                          }
+                        >
+                          <SelectTrigger className="h-7 w-32 text-[10px] font-semibold rounded-lg">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent className="rounded-xl text-xs">
+                            <SelectItem value="saved">Saved</SelectItem>
+                            <SelectItem value="submitted">Submitted</SelectItem>
+                            <SelectItem value="interview">Interview</SelectItem>
+                            <SelectItem value="offer">Offer</SelectItem>
+                            <SelectItem value="rejected">Closed</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
                   ))}
                 </div>
               </section>
@@ -313,15 +351,6 @@ function ApplicationsPage() {
           })}
         </div>
       )}
-
-      <ConfirmSubmissionDialog
-        application={confirmTarget}
-        onClose={() => setConfirmTarget(null)}
-        onDone={() => {
-          qc.invalidateQueries({ queryKey: ["applications"] });
-          setConfirmTarget(null);
-        }}
-      />
     </div>
   );
 }
@@ -340,7 +369,7 @@ function StatCard({
   return (
     <div
       className={cn(
-        "rounded-xl border border-border bg-card p-4 transition-colors",
+        "rounded-2xl border border-border bg-card p-4 transition-colors",
         accent && "border-accent/40 bg-accent/5",
       )}
     >
@@ -349,7 +378,7 @@ function StatCard({
       </div>
       <div
         className={cn(
-          "mt-1 font-display text-2xl",
+          "mt-1 font-display text-2xl font-bold",
           tone === "success" && "text-success",
         )}
       >
@@ -376,7 +405,7 @@ function FilterPill({
       className={cn(
         "inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-medium transition-all",
         active
-          ? "border-primary bg-primary text-primary-foreground"
+          ? "border-primary bg-primary text-primary-foreground font-semibold"
           : "border-border bg-card text-foreground hover:border-primary/40 hover:bg-secondary",
       )}
     >
@@ -392,204 +421,5 @@ function FilterPill({
         {count}
       </span>
     </button>
-  );
-}
-
-function ApplicationCard({
-  app,
-  status,
-  onDraft,
-  onCancel,
-  onConfirm,
-  draftPending,
-  cancelPending,
-}: {
-  app: AppRow;
-  status: StatusKey;
-  onDraft: () => void;
-  onCancel: () => void;
-  onConfirm: () => void;
-  draftPending: boolean;
-  cancelPending: boolean;
-}) {
-  const match =
-    app.match_score != null ? Math.round(Number(app.match_score) * 100) : null;
-  const matchTone =
-    match == null
-      ? "text-muted-foreground"
-      : match >= 80
-        ? "text-success"
-        : match >= 60
-          ? "text-accent-foreground"
-          : "text-muted-foreground";
-
-  return (
-    <div className="group relative overflow-hidden rounded-2xl border border-border bg-card transition-all hover:border-primary/30 hover:shadow-sm">
-      {/* accent bar */}
-      <div
-        className={cn(
-          "absolute inset-x-0 top-0 h-0.5 opacity-0 transition-opacity group-hover:opacity-100",
-          status === "offer" || status === "interview"
-            ? "bg-success"
-            : status === "rejected"
-              ? "bg-muted-foreground/30"
-              : "bg-primary",
-        )}
-      />
-
-      <div className="p-4">
-        <Link
-          to="/jobs/$jobId"
-          params={{ jobId: app.job_id }}
-          className="block"
-        >
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0 flex-1">
-              <div className="line-clamp-2 text-sm font-medium leading-snug group-hover:text-primary">
-                {app.job?.title ?? "Untitled role"}
-              </div>
-              <div className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground">
-                <Building2 className="h-3 w-3 shrink-0" />
-                <span className="line-clamp-1">
-                  {app.job?.company ?? "Unknown company"}
-                </span>
-              </div>
-            </div>
-            {match != null && (
-              <div
-                className={cn(
-                  "shrink-0 rounded-lg border border-border bg-background px-2 py-1 text-center",
-                  matchTone,
-                )}
-              >
-                <div className="font-display text-sm leading-none">
-                  {match}
-                </div>
-                <div className="mt-0.5 text-[9px] uppercase tracking-wider text-muted-foreground">
-                  match
-                </div>
-              </div>
-            )}
-          </div>
-        </Link>
-
-        {(status === "saved" ||
-          status === "ready_to_apply" ||
-          status === "drafting") && (
-          <div className="mt-3 flex items-center gap-1.5 border-t border-border pt-3">
-            {(status === "saved" || status === "ready_to_apply") && (
-              <Button
-                size="sm"
-                variant="outline"
-                className="h-7 flex-1 text-xs"
-                disabled={draftPending}
-                onClick={onDraft}
-              >
-                <Bot className="mr-1 h-3 w-3" />
-                Draft plan
-              </Button>
-            )}
-            {status === "drafting" && (
-              <>
-                <Button
-                  size="sm"
-                  className="h-7 flex-1 text-xs"
-                  onClick={onConfirm}
-                >
-                  <CheckCircle2 className="mr-1 h-3 w-3" />
-                  Mark submitted
-                </Button>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className="h-7 px-2 text-xs"
-                  onClick={onCancel}
-                  disabled={cancelPending}
-                  aria-label="Cancel automation"
-                >
-                  <X className="h-3 w-3" />
-                </Button>
-              </>
-            )}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function ConfirmSubmissionDialog({
-  application,
-  onClose,
-  onDone,
-}: {
-  application: AppRow | null;
-  onClose: () => void;
-  onDone: () => void;
-}) {
-  const confirmFn = useServerFn(confirmSubmission);
-  const [ref, setRef] = useState("");
-  const [notes, setNotes] = useState("");
-
-  const submit = useMutation({
-    mutationFn: () =>
-      confirmFn({
-        data: {
-          application_id: application!.id,
-          external_reference: ref || undefined,
-          notes: notes || undefined,
-        },
-      }),
-    onSuccess: () => {
-      toast.success("Marked as submitted");
-      setRef("");
-      setNotes("");
-      onDone();
-    },
-    onError: (e: Error) => toast.error(e.message),
-  });
-
-  return (
-    <Dialog open={!!application} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Confirm submission</DialogTitle>
-          <DialogDescription>
-            Confirm that the application for {application?.job?.title} at{" "}
-            {application?.job?.company} was submitted. This logs the event and
-            moves it to the Submitted column.
-          </DialogDescription>
-        </DialogHeader>
-        <div className="space-y-3">
-          <div className="space-y-1.5">
-            <Label htmlFor="ref">External reference (optional)</Label>
-            <Input
-              id="ref"
-              placeholder="e.g. Greenhouse application ID"
-              value={ref}
-              onChange={(e) => setRef(e.target.value)}
-            />
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="notes">Notes (optional)</Label>
-            <Textarea
-              id="notes"
-              rows={3}
-              placeholder="Recruiter contact, follow-up date…"
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-            />
-          </div>
-        </div>
-        <DialogFooter>
-          <Button variant="ghost" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button onClick={() => submit.mutate()} disabled={submit.isPending}>
-            {submit.isPending ? "Saving…" : "Confirm submitted"}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
   );
 }

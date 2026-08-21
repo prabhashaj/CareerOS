@@ -1,8 +1,0 @@
-import { createFileRoute, redirect } from "@tanstack/react-router";
-
-export const Route = createFileRoute("/_authenticated/review")({
-  beforeLoad: () => {
-    throw redirect({ to: "/applications", replace: true });
-  },
-  component: () => null,
-});

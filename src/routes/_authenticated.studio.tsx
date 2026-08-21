@@ -1,5 +1,6 @@
-import { createFileRoute, useSearch } from "@tanstack/react-router";
+import { createFileRoute, Link, useSearch } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useServerFn } from "@tanstack/react-start";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Code2,
@@ -21,6 +22,15 @@ import {
   ZoomIn,
   ZoomOut,
   Check,
+  Target,
+  Mail,
+  Mic,
+  ChevronRight,
+  AlertCircle,
+  Building2,
+  Briefcase,
+  CheckCircle2,
+  Zap,
 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
@@ -43,13 +53,28 @@ import { ResumeDocument } from "@/components/resume/ResumeDocument";
 import { UploadResumeModal } from "@/components/resume/UploadResumeModal";
 import { CheckpointsModal, type CheckpointItem } from "@/components/studio/CheckpointsModal";
 import { exportDocx, exportPdf } from "@/lib/export";
+import { tailorResume } from "@/lib/agent.functions";
+import { analyzeATSKeywords } from "@/lib/tailoring.functions";
+import { listJobs, getJob } from "@/lib/jobs.functions";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
+  SelectValue,
 } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Slider } from "@/components/ui/slider";
@@ -77,6 +102,10 @@ function StudioPage() {
   const { registerStudioSession, updateStudioSession, setMessages } = useAgentContext();
   const { resumeId, jobId } = useSearch({ from: "/_authenticated/studio" });
 
+  const tailorFn = useServerFn(tailorResume);
+  const atsAnalyzeFn = useServerFn(analyzeATSKeywords);
+  const listJobsFn = useServerFn(listJobs);
+
   const [content, setContent] = useState<ResumeContent>(starterResume());
   const [template, setTemplate] = useState<TemplateId>("minimal");
   const [density, setDensity] = useState<"compact" | "normal" | "relaxed">("normal");
@@ -92,6 +121,21 @@ function StudioPage() {
   const [isWideEditor, setIsWideEditor] = useState(false);
   const [showPageBreaks, setShowPageBreaks] = useState(true);
   const [isExportingPdf, setIsExportingPdf] = useState(false);
+
+  // Target Job & ATS Drawer State
+  const [targetJobDrawerOpen, setTargetJobDrawerOpen] = useState(false);
+  const [activeJobId, setActiveJobId] = useState<string>(jobId ?? "");
+  const [targetTitle, setTargetTitle] = useState("");
+  const [targetCompany, setTargetCompany] = useState("");
+  const [targetDescription, setTargetDescription] = useState("");
+  const [isTailoring, setIsTailoring] = useState(false);
+  const [isAnalyzingAts, setIsAnalyzingAts] = useState(false);
+  const [atsAnalysis, setAtsAnalysis] = useState<{
+    score: number;
+    matched_keywords: string[];
+    missing_keywords: string[];
+    suggestions: string[];
+  } | null>(null);
 
   const activePreset = SPACING_PRESETS[density] || SPACING_PRESETS.normal;
   const currentSpacing: {
@@ -143,15 +187,30 @@ function StudioPage() {
     }
   };
 
-  // Load job description for context
+  // Load saved jobs
+  const { data: savedJobs = [] } = useQuery({
+    queryKey: ["saved-jobs", user?.id],
+    enabled: !!user,
+    queryFn: () => listJobsFn(),
+  });
+
+  // Load job description for context if activeJobId is set
   const { data: jobRow } = useQuery({
-    queryKey: ["job", jobId],
-    enabled: !!jobId,
+    queryKey: ["job", activeJobId],
+    enabled: !!activeJobId && activeJobId !== "custom",
     queryFn: async () => {
-      const { data } = await supabase.from("jobs").select("*").eq("id", jobId!).maybeSingle();
+      const { data } = await supabase.from("jobs").select("*").eq("id", activeJobId).maybeSingle();
       return data;
     },
   });
+
+  useEffect(() => {
+    if (jobRow) {
+      setTargetTitle(jobRow.title);
+      setTargetCompany(jobRow.company);
+      setTargetDescription(jobRow.description || "");
+    }
+  }, [jobRow]);
 
   // Load resume from DB
   const { data: resumeRow } = useQuery({
@@ -224,7 +283,7 @@ function StudioPage() {
               title: c.contact.name || "Untitled Resume",
               content: c as unknown as Json,
               template_id: tpl,
-              created_from_job_id: jobId ?? null,
+              created_from_job_id: activeJobId && activeJobId !== "custom" ? activeJobId : null,
             })
             .select("id")
             .single();
@@ -238,7 +297,7 @@ function StudioPage() {
         setIsSaving(false);
       }
     },
-    [currentResumeId, jobId, qc, template, user],
+    [activeJobId, currentResumeId, qc, template, user],
   );
 
   // Checkpoint creation handler
@@ -258,7 +317,7 @@ function StudioPage() {
               title: targetContent.contact.name || "Untitled Resume",
               content: targetContent as unknown as Json,
               template_id: template,
-              created_from_job_id: jobId ?? null,
+              created_from_job_id: activeJobId && activeJobId !== "custom" ? activeJobId : null,
             })
             .select("id")
             .single();
@@ -285,7 +344,7 @@ function StudioPage() {
         toast.error("Could not save checkpoint");
       }
     },
-    [content, currentResumeId, jobId, qc, template, user, versions],
+    [activeJobId, content, currentResumeId, qc, template, user, versions],
   );
 
   // Revert to any specific checkpoint
@@ -294,7 +353,6 @@ function StudioPage() {
       const restored = normalizeResume(checkpoint.content);
       const restoredTpl = (checkpoint.template_id as TemplateId) || template;
 
-      // Auto-save a safety checkpoint before reverting
       void createCheckpoint(`Before reverting to v${checkpoint.version}`, content, "user");
 
       setContent(restored);
@@ -317,7 +375,6 @@ function StudioPage() {
     [content, createCheckpoint, saveResume, setMessages, template],
   );
 
-  // Quick Revert to latest previous checkpoint
   const handleRevertLastChange = useCallback(() => {
     if (versions.length === 0) {
       toast.info("No previous checkpoints found to revert to.");
@@ -361,14 +418,15 @@ function StudioPage() {
       handleRevertToCheckpoint,
       handleRevertLastChange,
       openCheckpointsModal: () => setShowVersions(true),
-      jobRow: jobRow
-        ? {
-            id: jobRow.id,
-            title: jobRow.title,
-            company: jobRow.company,
-            description: jobRow.description,
-          }
-        : null,
+      jobRow:
+        targetTitle || targetCompany
+          ? {
+              id: activeJobId,
+              title: targetTitle,
+              company: targetCompany,
+              description: targetDescription,
+            }
+          : null,
       versions: formattedVersions,
       currentResumeId,
     }),
@@ -379,22 +437,84 @@ function StudioPage() {
       createCheckpoint,
       handleRevertToCheckpoint,
       handleRevertLastChange,
-      jobRow,
+      targetTitle,
+      targetCompany,
+      activeJobId,
+      targetDescription,
       formattedVersions,
       currentResumeId,
     ],
   );
 
-  // Register session lifecycle on mount and unregister on unmount
   useEffect(() => {
     return registerStudioSession(currentSessionData);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [registerStudioSession]);
 
-  // Keep ref updated on every change without triggering parent state re-renders
   useEffect(() => {
     updateStudioSession(currentSessionData);
   }, [currentSessionData, updateStudioSession]);
+
+  // 1-Click Tailor to Job Description Handler
+  const handleTailorToJD = async () => {
+    if (!targetDescription.trim() && !targetTitle.trim()) {
+      toast.error("Please enter a job title or paste the job description first.");
+      setTargetJobDrawerOpen(true);
+      return;
+    }
+
+    setIsTailoring(true);
+    const toastId = toast.loading("Analyzing JD & tailoring resume for maximum ATS alignment...");
+    try {
+      // Auto-save safety checkpoint
+      await createCheckpoint(`Before Tailoring for ${targetCompany || targetTitle || "Target Role"}`, content, "agent");
+
+      const res = await tailorFn({
+        data: {
+          resume: content,
+          instruction: `Tailor this resume specifically for the position of ${targetTitle} at ${targetCompany}. Optimize summary, strengthen bullet points with strong action verbs & metrics, align verified skills, and maximize ATS score.`,
+          jobTitle: targetTitle,
+          company: targetCompany,
+          jobDescription: targetDescription,
+          companyResearch: true,
+        },
+      });
+
+      const parsedNewResume = JSON.parse(res.resumeJson);
+      const normalized = normalizeResume(parsedNewResume);
+      setContent(normalized);
+      void saveResume(normalized);
+
+      // Trigger instant ATS keyword analysis
+      void handleRunAtsAnalysis(normalized);
+
+      toast.success("Resume tailored successfully! Checkpoint saved.", { id: toastId });
+    } catch (e) {
+      console.error(e);
+      toast.error(e instanceof Error ? e.message : "Tailoring failed", { id: toastId });
+    } finally {
+      setIsTailoring(false);
+    }
+  };
+
+  // Run ATS keyword & gap analysis
+  const handleRunAtsAnalysis = async (resumeToTest = content) => {
+    if (!targetDescription.trim()) return;
+    setIsAnalyzingAts(true);
+    try {
+      const resumeText = JSON.stringify(resumeToTest);
+      const result = await atsAnalyzeFn({
+        data: {
+          job_description: targetDescription,
+          resume_text: resumeText,
+        },
+      });
+      setAtsAnalysis(result);
+    } catch (e) {
+      console.error("ATS analysis error", e);
+    } finally {
+      setIsAnalyzingAts(false);
+    }
+  };
 
   const applyJsonEdit = () => {
     try {
@@ -442,6 +562,13 @@ function StudioPage() {
             title="Open JSON Editor"
           >
             <Code2 className="size-4.5" />
+          </button>
+          <button
+            onClick={() => setTargetJobDrawerOpen(true)}
+            className="rounded-xl p-2.5 text-accent hover:bg-accent/10 transition-colors"
+            title="Target Job Description & ATS Analysis"
+          >
+            <Target className="size-4.5" />
           </button>
           <button
             onClick={() => setUploadModalOpen(true)}
@@ -540,6 +667,47 @@ function StudioPage() {
             </div>
           </div>
 
+          {/* Target JD Banner inside Editor */}
+          <div className="border-b border-border/80 bg-secondary/25 px-4 py-2.5 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2 min-w-0">
+              <div className="grid size-6 place-items-center rounded-md bg-primary/10 text-primary shrink-0">
+                <Target className="size-3.5" />
+              </div>
+              <div className="min-w-0 leading-tight">
+                <div className="text-[11px] font-bold truncate text-foreground">
+                  {targetTitle || "No Target JD Selected"}
+                  {targetCompany ? ` at ${targetCompany}` : ""}
+                </div>
+                <div className="text-[10px] text-muted-foreground truncate">
+                  {atsAnalysis ? `${atsAnalysis.score}% ATS Keyword Match` : "Click to attach JD & optimize"}
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-1.5 shrink-0">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setTargetJobDrawerOpen(true)}
+                className="h-7 px-2 text-[11px] font-semibold gap-1 rounded-lg"
+              >
+                <Sliders className="size-3" />
+                <span>JD & ATS</span>
+              </Button>
+              <Button
+                size="sm"
+                variant="default"
+                disabled={isTailoring}
+                onClick={handleTailorToJD}
+                className="h-7 px-2.5 text-[11px] font-bold gap-1 rounded-lg shadow-xs"
+                title="Tailor summary, bullets, and keywords to this JD"
+              >
+                {isTailoring ? <Loader2 className="size-3 animate-spin" /> : <Sparkles className="size-3" />}
+                <span>Tailor to JD</span>
+              </Button>
+            </div>
+          </div>
+
           {/* Form or JSON Content */}
           <div className="min-h-0 flex-1 overflow-y-auto p-4 space-y-4">
             {leftTab === "form" ? (
@@ -548,7 +716,7 @@ function StudioPage() {
               <div className="space-y-2.5">
                 <textarea
                   id="studio-json-editor"
-                  className="h-[calc(100vh-250px)] w-full rounded-xl border border-border bg-secondary/30 font-mono text-xs leading-relaxed p-3.5 focus:outline-none focus:ring-1 focus:ring-primary shadow-inner"
+                  className="h-[calc(100vh-270px)] w-full rounded-xl border border-border bg-secondary/30 font-mono text-xs leading-relaxed p-3.5 focus:outline-none focus:ring-1 focus:ring-primary shadow-inner"
                   value={jsonRaw}
                   onChange={(e) => {
                     setJsonRaw(e.target.value);
@@ -612,17 +780,16 @@ function StudioPage() {
 
       {/* ── CENTER: live multi-page preview ── */}
       <div className="min-w-0 flex-1 flex flex-col overflow-hidden bg-muted/40">
-        {/* Top Preview Control Bar - 2 Clean Lines */}
+        {/* Top Preview Control Bar */}
         <div className="border-b border-border bg-card shadow-xs z-10 shrink-0">
-          {/* Line 1: Expanded Template Selector, Density, Guides ──> Download PDF in top right corner */}
           <div className="flex items-center justify-between gap-3 px-5 py-2.5 border-b border-border/50">
-            {/* Left: Expanded Template Selector, Density, Guides */}
+            {/* Left: Template Selector, Density, Guides */}
             <div className="flex items-center gap-3">
-              {/* Expanded Template Selector */}
+              {/* Template Selector */}
               <Select value={template} onValueChange={(v) => setTemplate(v as TemplateId)}>
                 <SelectTrigger
                   id="template-select"
-                  className="h-9 w-[300px] shrink-0 text-xs shadow-xs bg-secondary/50 border-border hover:border-primary/50 transition-all font-medium rounded-xl"
+                  className="h-9 w-[280px] shrink-0 text-xs shadow-xs bg-secondary/50 border-border hover:border-primary/50 transition-all font-medium rounded-xl"
                 >
                   <div className="flex items-center gap-2 truncate text-left w-full pr-2">
                     <LayoutTemplate className="size-3.5 text-primary shrink-0" />
@@ -684,7 +851,7 @@ function StudioPage() {
                 ))}
               </div>
 
-              {/* Spacing & Layout Customizer Popover */}
+              {/* Spacing Popover */}
               <Popover>
                 <PopoverTrigger asChild>
                   <button
@@ -707,32 +874,11 @@ function StudioPage() {
                         onClick={() => handleSelectDensity("normal")}
                         className="text-[10px] text-primary hover:underline font-semibold"
                       >
-                        Reset to Normal
+                        Reset
                       </button>
                     </div>
 
-                    {/* Quick Presets */}
-                    <div className="space-y-1.5">
-                      <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Quick Presets</label>
-                      <div className="grid grid-cols-3 gap-1.5">
-                        {(["compact", "normal", "relaxed"] as const).map((preset) => (
-                          <button
-                            key={preset}
-                            onClick={() => handleSelectDensity(preset)}
-                            className={cn(
-                              "rounded-lg px-2 py-1.5 text-[11px] font-medium border text-center transition-all capitalize",
-                              density === preset
-                                ? "bg-primary text-primary-foreground border-primary font-semibold shadow-xs"
-                                : "bg-secondary text-muted-foreground hover:text-foreground border-border",
-                            )}
-                          >
-                            {preset === "compact" ? "Compact (1P)" : preset === "normal" ? "Standard" : "Spacious"}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* Section Spacing Slider */}
+                    {/* Section Spacing */}
                     <div className="space-y-1.5">
                       <div className="flex items-center justify-between text-xs">
                         <span className="font-semibold text-foreground">Section Spacing</span>
@@ -747,16 +893,12 @@ function StudioPage() {
                           if (val[0] !== undefined) updateSpacing({ sectionGap: val[0] });
                         }}
                       />
-                      <div className="flex justify-between text-[9px] text-muted-foreground">
-                        <span>Tight (4px)</span>
-                        <span>Spacious (32px)</span>
-                      </div>
                     </div>
 
-                    {/* Item Spacing Slider */}
+                    {/* Item Gap */}
                     <div className="space-y-1.5">
                       <div className="flex items-center justify-between text-xs">
-                        <span className="font-semibold text-foreground">Item / Entry Gap</span>
+                        <span className="font-semibold text-foreground">Item Gap</span>
                         <span className="font-mono text-[11px] text-primary font-bold">{currentSpacing.itemGap}px</span>
                       </div>
                       <Slider
@@ -768,37 +910,12 @@ function StudioPage() {
                           if (val[0] !== undefined) updateSpacing({ itemGap: val[0] });
                         }}
                       />
-                      <div className="flex justify-between text-[9px] text-muted-foreground">
-                        <span>Tight (2px)</span>
-                        <span>Spacious (20px)</span>
-                      </div>
                     </div>
 
-                    {/* Line Height Slider */}
+                    {/* Margins */}
                     <div className="space-y-1.5">
                       <div className="flex items-center justify-between text-xs">
-                        <span className="font-semibold text-foreground">Line Height</span>
-                        <span className="font-mono text-[11px] text-primary font-bold">{Number(currentSpacing.lineHeight).toFixed(2)}</span>
-                      </div>
-                      <Slider
-                        min={1.20}
-                        max={1.80}
-                        step={0.02}
-                        value={[currentSpacing.lineHeight]}
-                        onValueChange={(val) => {
-                          if (val[0] !== undefined) updateSpacing({ lineHeight: Number(val[0].toFixed(2)) });
-                        }}
-                      />
-                      <div className="flex justify-between text-[9px] text-muted-foreground">
-                        <span>Compact (1.20)</span>
-                        <span>Relaxed (1.80)</span>
-                      </div>
-                    </div>
-
-                    {/* Margins Slider */}
-                    <div className="space-y-1.5">
-                      <div className="flex items-center justify-between text-xs">
-                        <span className="font-semibold text-foreground">Page Margins</span>
+                        <span className="font-semibold text-foreground">Margins</span>
                         <span className="font-mono text-[11px] text-primary font-bold">{currentSpacing.pageMargin}px</span>
                       </div>
                       <Slider
@@ -810,16 +927,12 @@ function StudioPage() {
                           if (val[0] !== undefined) updateSpacing({ pageMargin: val[0] });
                         }}
                       />
-                      <div className="flex justify-between text-[9px] text-muted-foreground">
-                        <span>Narrow (24px)</span>
-                        <span>Wide (60px)</span>
-                      </div>
                     </div>
                   </div>
                 </PopoverContent>
               </Popover>
 
-              {/* Page Guide Toggle */}
+              {/* Guides */}
               <button
                 onClick={() => setShowPageBreaks((b) => !b)}
                 className={cn(
@@ -835,8 +948,23 @@ function StudioPage() {
               </button>
             </div>
 
-            {/* Top Right Corner: Download PDF */}
-            <div className="ml-auto flex items-center shrink-0">
+            {/* Top Right: Target JD button & Download PDF */}
+            <div className="ml-auto flex items-center gap-2 shrink-0">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setTargetJobDrawerOpen(true)}
+                className="h-9 px-3 text-xs gap-1.5 font-bold rounded-xl border-accent/40 bg-accent/5 hover:bg-accent/15 text-accent-foreground"
+              >
+                <Target className="size-4 text-accent" />
+                <span>Target JD & ATS Match</span>
+                {atsAnalysis && (
+                  <Badge variant="default" className="text-[10px] h-4 px-1 py-0 ml-1">
+                    {atsAnalysis.score}%
+                  </Badge>
+                )}
+              </Button>
+
               <Button
                 id="preview-export-pdf-btn"
                 size="sm"
@@ -851,9 +979,8 @@ function StudioPage() {
             </div>
           </div>
 
-          {/* Line 2: Undo, Checkpoints & Prominent Zoom Controls */}
+          {/* Line 2: Undo, Checkpoints & Zoom */}
           <div className="flex items-center justify-between gap-3 px-5 py-2 bg-secondary/20">
-            {/* Left: Undo & Checkpoints */}
             <div className="flex items-center gap-2">
               <Button
                 id="preview-undo-btn"
@@ -886,7 +1013,7 @@ function StudioPage() {
               </Button>
             </div>
 
-            {/* Right: Prominent Zoom Controls */}
+            {/* Zoom Controls */}
             <div className="flex items-center gap-1.5 rounded-xl bg-secondary/50 px-2.5 py-1 border border-border/70 shrink-0">
               <span className="text-[11px] font-medium text-muted-foreground mr-1">Zoom:</span>
               <button
@@ -932,7 +1059,6 @@ function StudioPage() {
               marginBottom: `${Math.max(40, (zoom - 0.8) * 350)}px`,
             }}
           >
-            {/* Paper Document Container */}
             <div id="resume-preview-document" className="resume-print w-full flex flex-col items-center relative">
               <ResumeDocument content={content} template={template} density={density} spacing={content.spacing} />
             </div>
@@ -940,7 +1066,200 @@ function StudioPage() {
         </div>
       </div>
 
+      {/* ── Target Job & ATS Analysis Drawer ── */}
+      <Sheet open={targetJobDrawerOpen} onOpenChange={setTargetJobDrawerOpen}>
+        <SheetContent className="w-full sm:max-w-md md:max-w-lg overflow-y-auto p-6 space-y-6">
+          <SheetHeader className="space-y-1">
+            <SheetTitle className="flex items-center gap-2 font-display text-lg">
+              <Target className="size-5 text-primary" /> Target Job Description & ATS
+            </SheetTitle>
+            <SheetDescription className="text-xs">
+              Attach a job description to tailor your resume, check ATS keyword match, or jump to Cover Letter & Interview Prep.
+            </SheetDescription>
+          </SheetHeader>
 
+          {/* Job Selection / Input */}
+          <div className="space-y-4 rounded-2xl border border-border bg-card p-4 shadow-xs">
+            <div className="space-y-1.5">
+              <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                Select or Paste Job Description
+              </Label>
+              {savedJobs.length > 0 && (
+                <Select
+                  value={activeJobId}
+                  onValueChange={(val) => {
+                    setActiveJobId(val);
+                  }}
+                >
+                  <SelectTrigger className="h-9 text-xs rounded-xl bg-secondary/40">
+                    <SelectValue placeholder="Choose from saved target jobs..." />
+                  </SelectTrigger>
+                  <SelectContent className="rounded-xl">
+                    <SelectItem value="custom" className="text-xs cursor-pointer">
+                      + Custom / Paste new job description
+                    </SelectItem>
+                    {savedJobs.map((j) => (
+                      <SelectItem key={j.id} value={j.id} className="text-xs cursor-pointer">
+                        {j.title} at {j.company}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-1">
+                <Label htmlFor="drawer-title" className="text-[11px] font-semibold text-muted-foreground">
+                  Job Title
+                </Label>
+                <Input
+                  id="drawer-title"
+                  placeholder="e.g. Staff Software Engineer"
+                  value={targetTitle}
+                  onChange={(e) => setTargetTitle(e.target.value)}
+                  className="h-8.5 text-xs rounded-xl"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="drawer-comp" className="text-[11px] font-semibold text-muted-foreground">
+                  Company Name
+                </Label>
+                <Input
+                  id="drawer-comp"
+                  placeholder="e.g. OpenAI"
+                  value={targetCompany}
+                  onChange={(e) => setTargetCompany(e.target.value)}
+                  className="h-8.5 text-xs rounded-xl"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <Label htmlFor="drawer-desc" className="text-[11px] font-semibold text-muted-foreground">
+                Job Description Requirements & Text
+              </Label>
+              <Textarea
+                id="drawer-desc"
+                rows={5}
+                placeholder="Paste the full job description here..."
+                value={targetDescription}
+                onChange={(e) => setTargetDescription(e.target.value)}
+                className="text-xs resize-none rounded-xl leading-relaxed bg-secondary/30"
+              />
+            </div>
+
+            {/* Actions */}
+            <div className="flex flex-wrap gap-2 pt-1">
+              <Button
+                onClick={handleTailorToJD}
+                disabled={isTailoring}
+                className="flex-1 font-bold text-xs h-9 gap-1.5 rounded-xl shadow-sm"
+              >
+                {isTailoring ? <Loader2 className="size-3.5 animate-spin" /> : <Sparkles className="size-3.5" />}
+                <span>Tailor Resume to JD</span>
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => void handleRunAtsAnalysis()}
+                disabled={isAnalyzingAts || !targetDescription}
+                className="font-semibold text-xs h-9 gap-1 rounded-xl"
+              >
+                {isAnalyzingAts ? <Loader2 className="size-3.5 animate-spin" /> : <Zap className="size-3.5 text-primary" />}
+                <span>Check ATS Match</span>
+              </Button>
+            </div>
+          </div>
+
+          {/* ATS Analysis Results */}
+          {atsAnalysis && (
+            <div className="space-y-4 rounded-2xl border border-border bg-card p-5 shadow-xs animate-fade-in">
+              <div className="flex items-center justify-between border-b border-border/60 pb-3">
+                <div>
+                  <h4 className="font-display text-sm font-bold text-foreground">ATS Keyword Analysis</h4>
+                  <p className="text-[11px] text-muted-foreground">Real-time match against target JD</p>
+                </div>
+                <div className="grid size-12 place-items-center rounded-2xl bg-primary/10 text-primary font-display text-lg font-bold">
+                  {atsAnalysis.score}%
+                </div>
+              </div>
+
+              {/* Matched Keywords */}
+              <div className="space-y-1.5">
+                <span className="text-[11px] font-bold text-success flex items-center gap-1">
+                  <CheckCircle2 className="size-3.5" /> Matched Keywords ({atsAnalysis.matched_keywords.length})
+                </span>
+                <div className="flex flex-wrap gap-1">
+                  {atsAnalysis.matched_keywords.map((kw, i) => (
+                    <Badge key={i} variant="secondary" className="text-[10px] bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/20 font-medium">
+                      ✓ {kw}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+
+              {/* Missing Keywords */}
+              {atsAnalysis.missing_keywords.length > 0 && (
+                <div className="space-y-1.5">
+                  <span className="text-[11px] font-bold text-amber-600 dark:text-amber-400 flex items-center gap-1">
+                    <AlertCircle className="size-3.5" /> Missing / Gap Keywords ({atsAnalysis.missing_keywords.length})
+                  </span>
+                  <div className="flex flex-wrap gap-1">
+                    {atsAnalysis.missing_keywords.map((kw, i) => (
+                      <Badge key={i} variant="outline" className="text-[10px] border-amber-500/30 text-amber-700 dark:text-amber-300 font-medium">
+                        + {kw}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Optimization Suggestions */}
+              {atsAnalysis.suggestions.length > 0 && (
+                <div className="space-y-1.5 pt-2 border-t border-border/60">
+                  <span className="text-[11px] font-bold text-foreground">ATS Optimization Tips</span>
+                  <ul className="space-y-1 text-[11px] text-muted-foreground list-disc list-inside">
+                    {atsAnalysis.suggestions.map((s, i) => (
+                      <li key={i}>{s}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Quick Pillar Jump Links */}
+          <div className="rounded-2xl border border-border/80 bg-secondary/30 p-4 space-y-2.5">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+              Continue with this Target Job
+            </span>
+            <div className="grid grid-cols-2 gap-2">
+              <Link
+                to="/cover-letter"
+                search={{ jobId: activeJobId && activeJobId !== "custom" ? activeJobId : undefined }}
+                className="flex items-center justify-between p-2.5 rounded-xl border border-border bg-card hover:border-primary/50 text-xs font-semibold transition-all group"
+              >
+                <div className="flex items-center gap-2">
+                  <Mail className="size-4 text-primary" />
+                  <span>Cover Letter</span>
+                </div>
+                <ChevronRight className="size-3 text-muted-foreground group-hover:text-primary transition-colors" />
+              </Link>
+              <Link
+                to="/interview"
+                search={{ jobId: activeJobId && activeJobId !== "custom" ? activeJobId : undefined }}
+                className="flex items-center justify-between p-2.5 rounded-xl border border-border bg-card hover:border-primary/50 text-xs font-semibold transition-all group"
+              >
+                <div className="flex items-center gap-2">
+                  <Mic className="size-4 text-primary" />
+                  <span>Interview Prep</span>
+                </div>
+                <ChevronRight className="size-3 text-muted-foreground group-hover:text-primary transition-colors" />
+              </Link>
+            </div>
+          </div>
+        </SheetContent>
+      </Sheet>
 
       {/* Checkpoints & History Modal */}
       <CheckpointsModal
@@ -964,12 +1283,12 @@ function StudioPage() {
         open={uploadModalOpen}
         onOpenChange={setUploadModalOpen}
         initialJob={
-          jobRow
+          targetTitle || targetCompany
             ? {
-                id: jobRow.id,
-                title: jobRow.title,
-                company: jobRow.company,
-                description: jobRow.description || undefined,
+                id: activeJobId,
+                title: targetTitle,
+                company: targetCompany,
+                description: targetDescription || undefined,
               }
             : null
         }
