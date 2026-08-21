@@ -65,15 +65,24 @@ export async function callAiJson<T>(
   const choice = data.choices?.[0]?.message;
   const args = choice?.tool_calls?.[0]?.function?.arguments;
   if (args) {
-    return JSON.parse(args) as T;
+    try {
+      return JSON.parse(args) as T;
+    } catch {
+      const cleaned = args.replace(/^```json\s*|```$/g, "").trim();
+      return JSON.parse(cleaned) as T;
+    }
   }
 
   // Fallback to direct JSON content if provided
   if (choice?.content) {
     try {
-      return JSON.parse(choice.content) as T;
+      const cleaned = choice.content.replace(/```json\n?|\n?```/g, "").trim();
+      return JSON.parse(cleaned) as T;
     } catch {
-      // Continue to empty response error
+      const match = choice.content.match(/\{[\s\S]*\}/);
+      if (match) {
+        return JSON.parse(match[0]) as T;
+      }
     }
   }
 

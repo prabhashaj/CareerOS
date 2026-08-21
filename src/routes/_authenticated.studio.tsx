@@ -721,20 +721,11 @@ function StudioPage() {
         <UploadResumeModal
           open={uploadModalOpen}
           onOpenChange={setUploadModalOpen}
-          initialJob={
-            targetTitle || targetCompany
-              ? {
-                  id: activeJobId,
-                  title: targetTitle,
-                  company: targetCompany,
-                  description: targetDescription || undefined,
-                }
-              : null
-          }
           onLoaded={(loadedResume, newResumeId) => {
             setContent(loadedResume);
+            setSelectedBaseResumeId(newResumeId);
             setCurrentResumeId(newResumeId);
-            setIsSetupComplete(true);
+            void qc.invalidateQueries({ queryKey: ["resumes"] });
             void qc.invalidateQueries({ queryKey: ["versions", newResumeId] });
           }}
         />
