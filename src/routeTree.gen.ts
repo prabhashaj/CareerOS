@@ -22,9 +22,6 @@ import { Route as AuthenticatedInterviewRouteImport } from './routes/_authentica
 import { Route as AuthenticatedEvaluationRouteImport } from './routes/_authenticated.evaluation'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated.dashboard'
 import { Route as AuthenticatedCoverLetterRouteImport } from './routes/_authenticated.cover-letter'
-import { Route as AuthenticatedCareerRouteImport } from './routes/_authenticated.career'
-import { Route as AuthenticatedApplicationsRouteImport } from './routes/_authenticated.applications'
-import { Route as AuthenticatedAnalyticsRouteImport } from './routes/_authenticated.analytics'
 import { Route as AuthenticatedJobsIndexRouteImport } from './routes/_authenticated.jobs.index'
 import { Route as AuthenticatedJobsJobIdRouteImport } from './routes/_authenticated.jobs.$jobId'
 
@@ -95,22 +92,6 @@ const AuthenticatedCoverLetterRoute =
     path: '/cover-letter',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
-const AuthenticatedCareerRoute = AuthenticatedCareerRouteImport.update({
-  id: '/career',
-  path: '/career',
-  getParentRoute: () => AuthenticatedRoute,
-} as any)
-const AuthenticatedApplicationsRoute =
-  AuthenticatedApplicationsRouteImport.update({
-    id: '/applications',
-    path: '/applications',
-    getParentRoute: () => AuthenticatedRoute,
-  } as any)
-const AuthenticatedAnalyticsRoute = AuthenticatedAnalyticsRouteImport.update({
-  id: '/analytics',
-  path: '/analytics',
-  getParentRoute: () => AuthenticatedRoute,
-} as any)
 const AuthenticatedJobsIndexRoute = AuthenticatedJobsIndexRouteImport.update({
   id: '/jobs/',
   path: '/jobs/',
@@ -126,9 +107,6 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
   '/register': typeof RegisterRoute
-  '/analytics': typeof AuthenticatedAnalyticsRoute
-  '/applications': typeof AuthenticatedApplicationsRoute
-  '/career': typeof AuthenticatedCareerRoute
   '/cover-letter': typeof AuthenticatedCoverLetterRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/evaluation': typeof AuthenticatedEvaluationRoute
@@ -145,9 +123,6 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
   '/register': typeof RegisterRoute
-  '/analytics': typeof AuthenticatedAnalyticsRoute
-  '/applications': typeof AuthenticatedApplicationsRoute
-  '/career': typeof AuthenticatedCareerRoute
   '/cover-letter': typeof AuthenticatedCoverLetterRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/evaluation': typeof AuthenticatedEvaluationRoute
@@ -166,9 +141,6 @@ export interface FileRoutesById {
   '/_authenticated': typeof AuthenticatedRouteWithChildren
   '/login': typeof LoginRoute
   '/register': typeof RegisterRoute
-  '/_authenticated/analytics': typeof AuthenticatedAnalyticsRoute
-  '/_authenticated/applications': typeof AuthenticatedApplicationsRoute
-  '/_authenticated/career': typeof AuthenticatedCareerRoute
   '/_authenticated/cover-letter': typeof AuthenticatedCoverLetterRoute
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
   '/_authenticated/evaluation': typeof AuthenticatedEvaluationRoute
@@ -187,9 +159,6 @@ export interface FileRouteTypes {
     | '/'
     | '/login'
     | '/register'
-    | '/analytics'
-    | '/applications'
-    | '/career'
     | '/cover-letter'
     | '/dashboard'
     | '/evaluation'
@@ -206,9 +175,6 @@ export interface FileRouteTypes {
     | '/'
     | '/login'
     | '/register'
-    | '/analytics'
-    | '/applications'
-    | '/career'
     | '/cover-letter'
     | '/dashboard'
     | '/evaluation'
@@ -226,9 +192,6 @@ export interface FileRouteTypes {
     | '/_authenticated'
     | '/login'
     | '/register'
-    | '/_authenticated/analytics'
-    | '/_authenticated/applications'
-    | '/_authenticated/career'
     | '/_authenticated/cover-letter'
     | '/_authenticated/dashboard'
     | '/_authenticated/evaluation'
@@ -343,27 +306,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedCoverLetterRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
-    '/_authenticated/career': {
-      id: '/_authenticated/career'
-      path: '/career'
-      fullPath: '/career'
-      preLoaderRoute: typeof AuthenticatedCareerRouteImport
-      parentRoute: typeof AuthenticatedRoute
-    }
-    '/_authenticated/applications': {
-      id: '/_authenticated/applications'
-      path: '/applications'
-      fullPath: '/applications'
-      preLoaderRoute: typeof AuthenticatedApplicationsRouteImport
-      parentRoute: typeof AuthenticatedRoute
-    }
-    '/_authenticated/analytics': {
-      id: '/_authenticated/analytics'
-      path: '/analytics'
-      fullPath: '/analytics'
-      preLoaderRoute: typeof AuthenticatedAnalyticsRouteImport
-      parentRoute: typeof AuthenticatedRoute
-    }
     '/_authenticated/jobs/': {
       id: '/_authenticated/jobs/'
       path: '/jobs'
@@ -382,9 +324,6 @@ declare module '@tanstack/react-router' {
 }
 
 interface AuthenticatedRouteChildren {
-  AuthenticatedAnalyticsRoute: typeof AuthenticatedAnalyticsRoute
-  AuthenticatedApplicationsRoute: typeof AuthenticatedApplicationsRoute
-  AuthenticatedCareerRoute: typeof AuthenticatedCareerRoute
   AuthenticatedCoverLetterRoute: typeof AuthenticatedCoverLetterRoute
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
   AuthenticatedEvaluationRoute: typeof AuthenticatedEvaluationRoute
@@ -398,9 +337,6 @@ interface AuthenticatedRouteChildren {
 }
 
 const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
-  AuthenticatedAnalyticsRoute: AuthenticatedAnalyticsRoute,
-  AuthenticatedApplicationsRoute: AuthenticatedApplicationsRoute,
-  AuthenticatedCareerRoute: AuthenticatedCareerRoute,
   AuthenticatedCoverLetterRoute: AuthenticatedCoverLetterRoute,
   AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
   AuthenticatedEvaluationRoute: AuthenticatedEvaluationRoute,

@@ -10,15 +10,14 @@ import {
   Mic,
   Sparkles,
   Briefcase,
-  TrendingUp,
   FolderOpen,
   Plus,
   Zap,
-  Download,
   Building2,
   ChevronRight,
   CheckCircle2,
   ShieldCheck,
+  BookOpen,
 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
@@ -26,7 +25,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { listApplications } from "@/lib/applications.functions";
 import { listDocuments } from "@/lib/documents.functions";
 import { listJobs, createJob } from "@/lib/jobs.functions";
 import { supabase } from "@/integrations/supabase/client";
@@ -42,7 +40,6 @@ function Dashboard() {
   const navigate = useNavigate();
   const jobsFn = useServerFn(listJobs);
   const docsFn = useServerFn(listDocuments);
-  const appsFn = useServerFn(listApplications);
   const createJobFn = useServerFn(createJob);
 
   // Quick Launchpad state
@@ -53,7 +50,6 @@ function Dashboard() {
 
   const jobs = useQuery({ queryKey: ["jobs"], queryFn: () => jobsFn() });
   const docs = useQuery({ queryKey: ["documents"], queryFn: () => docsFn() });
-  const apps = useQuery({ queryKey: ["applications"], queryFn: () => appsFn() });
 
   // User saved resumes query
   const { data: resumes = [] } = useQuery({
@@ -69,13 +65,6 @@ function Dashboard() {
       return data ?? [];
     },
   });
-
-  const scoredApps = (apps.data ?? []).filter((a) => a.match_score != null);
-  const avgScore = scoredApps.length
-    ? Math.round(
-        (scoredApps.reduce((sum, a) => sum + Number(a.match_score), 0) / scoredApps.length) * 100,
-      )
-    : null;
 
   const handleQuickAction = async (target: "studio" | "cover-letter" | "interview") => {
     if (!quickTitle.trim() && !quickDescription.trim()) {
@@ -230,12 +219,12 @@ function Dashboard() {
         </div>
       </section>
 
-      {/* ── STATS & PIPELINE OVERVIEW ── */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+      {/* ── STATS & OVERVIEW ── */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="rounded-2xl border border-border bg-card p-5 shadow-xs">
           <div className="flex items-center justify-between text-muted-foreground">
             <span className="text-xs uppercase font-bold tracking-wider">Target Roles</span>
-            <Briefcase className="size-4" />
+            <Briefcase className="size-4 text-primary" />
           </div>
           <div className="mt-2 font-display text-3xl font-bold text-foreground">{jobs.data?.length ?? 0}</div>
           <p className="mt-1 text-[11px] text-muted-foreground">Saved job descriptions</p>
@@ -243,8 +232,8 @@ function Dashboard() {
 
         <div className="rounded-2xl border border-border bg-card p-5 shadow-xs">
           <div className="flex items-center justify-between text-muted-foreground">
-            <span className="text-xs uppercase font-bold tracking-wider">Resumes</span>
-            <FileText className="size-4" />
+            <span className="text-xs uppercase font-bold tracking-wider">Resumes in Library</span>
+            <FileText className="size-4 text-primary" />
           </div>
           <div className="mt-2 font-display text-3xl font-bold text-foreground">{resumes.length}</div>
           <p className="mt-1 text-[11px] text-muted-foreground">Tailored & starter versions</p>
@@ -252,22 +241,11 @@ function Dashboard() {
 
         <div className="rounded-2xl border border-border bg-card p-5 shadow-xs">
           <div className="flex items-center justify-between text-muted-foreground">
-            <span className="text-xs uppercase font-bold tracking-wider">Applications</span>
-            <TrendingUp className="size-4" />
+            <span className="text-xs uppercase font-bold tracking-wider">Knowledge Hub Items</span>
+            <BookOpen className="size-4 text-primary" />
           </div>
-          <div className="mt-2 font-display text-3xl font-bold text-foreground">{apps.data?.length ?? 0}</div>
-          <p className="mt-1 text-[11px] text-muted-foreground">In pipeline</p>
-        </div>
-
-        <div className="rounded-2xl border border-border bg-card p-5 shadow-xs">
-          <div className="flex items-center justify-between text-muted-foreground">
-            <span className="text-xs uppercase font-bold tracking-wider">Avg Match</span>
-            <ShieldCheck className="size-4 text-primary" />
-          </div>
-          <div className="mt-2 font-display text-3xl font-bold text-foreground">
-            {avgScore != null ? `${avgScore}%` : "—"}
-          </div>
-          <p className="mt-1 text-[11px] text-muted-foreground">ATS match alignment</p>
+          <div className="mt-2 font-display text-3xl font-bold text-foreground">{docs.data?.length ?? 0}</div>
+          <p className="mt-1 text-[11px] text-muted-foreground">Indexed resumes & documents</p>
         </div>
       </div>
 

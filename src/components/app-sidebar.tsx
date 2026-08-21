@@ -2,13 +2,10 @@ import { Link, useRouterState } from "@tanstack/react-router";
 import {
   Briefcase,
   LayoutDashboard,
-  ClipboardCheck,
   FileText,
-  BarChart3,
   Settings,
   Upload,
   LogOut,
-  Compass,
   Sparkles,
   Mail,
   Mic,
@@ -43,9 +40,6 @@ const workspace = [
   { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard },
   { title: "Target Roles & JDs", url: "/jobs", icon: Briefcase },
   { title: "My Resumes & Docs", url: "/resumes", icon: FolderOpen },
-  { title: "Applications Tracker", url: "/applications", icon: ClipboardCheck },
-  { title: "Career Discovery", url: "/career", icon: Compass },
-  { title: "Analytics", url: "/analytics", icon: BarChart3 },
 ];
 
 const account = [

@@ -9,7 +9,7 @@ import { getJob } from "@/lib/jobs.functions";
 import { rankJob } from "@/lib/ranking.functions";
 import { generateCoverLetter, generateAnswer } from "@/lib/tailoring.functions";
 import { runApplyPipeline } from "@/lib/orchestration.functions";
-import { getApplicationForJob, updateApplicationStatus, updateApplicationContent, type ApplicationStatus } from "@/lib/applications.functions";
+import { getApplicationForJob, updateApplicationContent } from "@/lib/applications.functions";
 import { reviewApplicationDraft, type ReviewResult } from "@/lib/reviewer.functions";
 import { upskillPlan } from "@/lib/upskill.functions";
 import { prepInterview } from "@/lib/interview.functions";
@@ -55,7 +55,6 @@ function JobDetail() {
   const cover = useServerFn(generateCoverLetter);
   const answerFn = useServerFn(generateAnswer);
   const pipeline = useServerFn(runApplyPipeline);
-  const setStatus = useServerFn(updateApplicationStatus);
   const saveContent = useServerFn(updateApplicationContent);
   const reviewFn = useServerFn(reviewApplicationDraft);
   const upskillFn = useServerFn(upskillPlan);
@@ -545,41 +544,22 @@ function JobDetail() {
 
 
 
-      {a && (
-        <div className="mt-8 space-y-3 rounded-xl border border-border bg-card p-5">
-          {j.source_url && (
-            <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-primary/5 p-3">
-              <div className="text-sm">
-                <div className="font-medium">Apply on the company site</div>
-                <div className="text-xs text-muted-foreground">
-                  Open the original posting in a new tab and apply with your tailored resume and cover letter.
-                </div>
-              </div>
-              <a
-                href={j.source_url}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex items-center gap-2 rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:opacity-90"
-              >
-                Open posting <ExternalLink className="h-4 w-4" />
-              </a>
+      {j.source_url && (
+        <div className="mt-8 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-border bg-card p-5 shadow-xs">
+          <div className="text-sm">
+            <div className="font-bold text-foreground">Apply on the company site</div>
+            <div className="text-xs text-muted-foreground">
+              Open the original job posting in a new tab and submit with your tailored resume and cover letter.
             </div>
-          )}
-
-          <div className="flex flex-wrap items-center gap-2">
-            <Send className="h-4 w-4 text-muted-foreground" />
-            <span className="mr-2 text-sm text-muted-foreground">Status:</span>
-            {(["saved", "drafting", "ready_to_apply", "submitted", "interview", "offer", "rejected"] as ApplicationStatus[]).map((s) => (
-              <Button
-                key={s}
-                size="sm"
-                variant={a.status === s ? "default" : "outline"}
-                onClick={() => run(`status-${s}`, () => setStatus({ data: { id: a.id, status: s } }), "Status updated")}
-              >
-                {s.replace("_", " ")}
-              </Button>
-            ))}
           </div>
+          <a
+            href={j.source_url}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-xs font-bold text-primary-foreground hover:opacity-90 transition-opacity shadow-xs"
+          >
+            Open Job Posting <ExternalLink className="h-3.5 w-3.5" />
+          </a>
         </div>
       )}
     </div>
