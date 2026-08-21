@@ -248,6 +248,93 @@ export const RESUME_TOOL_PARAMS = {
   required: ["resume", "reply", "changelog", "questions"],
 } as const;
 
+export const PARSE_TOOL_PARAMS = {
+  type: "object",
+  properties: {
+    contact: {
+      type: "object",
+      properties: {
+        name: { type: "string" },
+        title: { type: "string" },
+        email: { type: "string" },
+        phone: { type: "string" },
+        location: { type: "string" },
+        website: { type: "string" },
+        linkedin: { type: "string" },
+        github: { type: "string" },
+      },
+      required: ["name", "title", "email", "phone", "location", "website", "linkedin", "github"],
+    },
+    summary: { type: "string" },
+    experience: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          company: { type: "string" },
+          role: { type: "string" },
+          location: { type: "string" },
+          start: { type: "string" },
+          end: { type: "string" },
+          bullets: { type: "array", items: { type: "string" } },
+        },
+        required: ["company", "role", "location", "start", "end", "bullets"],
+      },
+    },
+    education: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          school: { type: "string" },
+          degree: { type: "string" },
+          start: { type: "string" },
+          end: { type: "string" },
+          details: { type: "string" },
+        },
+        required: ["school", "degree", "start", "end", "details"],
+      },
+    },
+    skills: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          category: { type: "string" },
+          items: { type: "array", items: { type: "string" } },
+        },
+        required: ["category", "items"],
+      },
+    },
+    projects: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          name: { type: "string" },
+          link: { type: "string" },
+          description: { type: "string" },
+          bullets: { type: "array", items: { type: "string" } },
+        },
+        required: ["name", "link", "description", "bullets"],
+      },
+    },
+    certifications: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          name: { type: "string" },
+          issuer: { type: "string" },
+          year: { type: "string" },
+        },
+        required: ["name", "issuer", "year"],
+      },
+    },
+  },
+  required: ["contact", "summary", "experience", "education", "skills", "projects", "certifications"],
+} as const;
+
 export const JOBS_TOOL_PARAMS = {
   type: "object",
   properties: {
@@ -290,10 +377,4 @@ export const JOBS_TOOL_PARAMS = {
     },
   },
   required: ["jobs"],
-} as const;
-
-export const PARSE_TOOL_PARAMS = {
-  type: "object",
-  properties: RESUME_TOOL_PARAMS.properties.resume.properties,
-  required: RESUME_TOOL_PARAMS.properties.resume.required,
 } as const;

@@ -94,7 +94,9 @@ export const parseResumeText = createServerFn({ method: "POST" })
       },
     );
 
-    return { resumeJson: JSON.stringify(parsed ?? {}) };
+    const parsedObj = parsed as Record<string, unknown> | null;
+    const finalResume = parsedObj?.["resume"] ?? parsedObj;
+    return { resumeJson: JSON.stringify(finalResume ?? {}) };
   });
 
 export const parseJobDescription = createServerFn({ method: "POST" })

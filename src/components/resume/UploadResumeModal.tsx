@@ -1,5 +1,4 @@
 import { useState, useRef } from "react";
-import { useNavigate } from "@tanstack/react-router";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import {
@@ -28,20 +27,12 @@ import {
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { cn } from "@/lib/utils";
 
 type Props = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  /** Optional job context if opened from a specific job */
-  initialJob?: {
-    id?: string;
-    title?: string;
-    company?: string;
-    description?: string;
-  } | null;
   /** Callback when resume is parsed and saved */
-  onLoaded?: (resume: ResumeContent, resumeId: string) => void;
+  onLoaded?: (resume: ResumeContent, resumeId: string, title: string) => void;
 };
 
 export function UploadResumeModal({ open, onOpenChange, onLoaded }: Props) {
@@ -69,18 +60,18 @@ export function UploadResumeModal({ open, onOpenChange, onLoaded }: Props) {
     onOpenChange(isOpen);
   };
 
-  // Parse uploaded resume with Mistral AI and save to library
+  // Parse uploaded resume with Mistral AI and save to library only (no direct tailoring)
   const parseAndSaveMut = useMutation({
     mutationFn: async (text: string) => {
       if (!user) throw new Error("Please sign in first");
       setIsProcessing(true);
-      setProcessingStatus("AI is structuring your resume facts & experience...");
+      setProcessingStatus("AI is reading and structuring your resume facts...");
 
       const res = await parseFn({ data: { text } });
       const parsed = JSON.parse(res.resumeJson);
       const normalized = normalizeResume(parsed);
 
-      setProcessingStatus("Saving parsed resume to library...");
+      setProcessingStatus("Saving base resume to your documents library...");
       const resumeTitle = normalized.contact.name
         ? `${normalized.contact.name}'s Resume`
         : file?.name?.replace(/\.[^/.]+$/, "") || "Imported Resume";
@@ -98,7 +89,7 @@ export function UploadResumeModal({ open, onOpenChange, onLoaded }: Props) {
 
       if (saveErr) throw saveErr;
 
-      // Index extracted text into Knowledge Hub documents
+      // Also store raw text in Knowledge Hub documents
       try {
         await supabase.from("documents").insert({
           user_id: user.id,
@@ -114,21 +105,22 @@ export function UploadResumeModal({ open, onOpenChange, onLoaded }: Props) {
       return {
         resumeId: savedResume.id,
         resumeContent: normalized,
+        resumeTitle,
       };
     },
-    onSuccess: async ({ resumeId, resumeContent }) => {
+    onSuccess: async ({ resumeId, resumeContent, resumeTitle }) => {
       await qc.invalidateQueries({ queryKey: ["resumes"] });
       await qc.invalidateQueries({ queryKey: ["documents"] });
-      toast.success("Resume parsed and saved to your library!");
+      toast.success("Document uploaded & saved as base resume!");
       handleClose(false);
 
       if (onLoaded) {
-        onLoaded(resumeContent, resumeId);
+        onLoaded(resumeContent, resumeId, resumeTitle);
       }
     },
     onError: (err: unknown) => {
       setIsProcessing(false);
-      const msg = err instanceof Error ? err.message : "Failed to parse resume";
+      const msg = err instanceof Error ? err.message : "Failed to parse document";
       toast.error(msg);
     },
   });
@@ -147,7 +139,7 @@ export function UploadResumeModal({ open, onOpenChange, onLoaded }: Props) {
   const processSelectedFile = async (selectedFile: File) => {
     setFile(selectedFile);
     setIsProcessing(true);
-    setProcessingStatus(`Reading document: ${selectedFile.name}...`);
+    setProcessingStatus(`Reading file: ${selectedFile.name}...`);
 
     try {
       const text = await extractTextFromFile(selectedFile);
@@ -179,9 +171,9 @@ export function UploadResumeModal({ open, onOpenChange, onLoaded }: Props) {
               <Upload className="size-4" />
             </div>
             <div>
-              <DialogTitle className="font-display text-lg font-bold">Upload Resume File</DialogTitle>
+              <DialogTitle className="font-display text-lg font-bold">Upload Resume Document</DialogTitle>
               <DialogDescription className="text-xs">
-                Upload your PDF, DOCX, or paste text to parse into structured resume data.
+                Upload your existing PDF, Word (.docx), or text resume to save as your base document.
               </DialogDescription>
             </div>
           </div>
@@ -193,7 +185,7 @@ export function UploadResumeModal({ open, onOpenChange, onLoaded }: Props) {
               <Loader2 className="size-6 animate-spin text-primary" />
             </div>
             <div className="space-y-1">
-              <div className="text-sm font-bold text-foreground">Extracting & Structuring</div>
+              <div className="text-sm font-bold text-foreground">Importing Document</div>
               <p className="text-xs text-muted-foreground">{processingStatus}</p>
             </div>
           </div>
@@ -253,7 +245,7 @@ export function UploadResumeModal({ open, onOpenChange, onLoaded }: Props) {
                   disabled={rawText.trim().length < 20}
                   className="w-full font-bold text-xs h-9 rounded-xl shadow-xs"
                 >
-                  <Sparkles className="size-3.5 mr-1.5" /> Parse Resume Text
+                  <Sparkles className="size-3.5 mr-1.5" /> Parse and Save Base Resume
                 </Button>
               </TabsContent>
             </Tabs>

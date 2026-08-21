@@ -130,6 +130,7 @@ function StudioPage() {
 
   // Target Job & Tailoring State
   const [selectedBaseResumeId, setSelectedBaseResumeId] = useState<string>(resumeId ?? "starter");
+  const [recentlyUploadedTitle, setRecentlyUploadedTitle] = useState<string | null>(null);
   const [activeJobId, setActiveJobId] = useState<string>(jobId ?? "");
   const [targetTitle, setTargetTitle] = useState("");
   const [targetCompany, setTargetCompany] = useState("");
@@ -1314,20 +1315,10 @@ function StudioPage() {
         onRevert={handleRevertToCheckpoint}
       />
 
-      {/* Upload & Tailor Modal */}
+      {/* Upload Base Resume Modal */}
       <UploadResumeModal
         open={uploadModalOpen}
         onOpenChange={setUploadModalOpen}
-        initialJob={
-          targetTitle || targetCompany
-            ? {
-                id: activeJobId,
-                title: targetTitle,
-                company: targetCompany,
-                description: targetDescription || undefined,
-              }
-            : null
-        }
         onLoaded={(loadedResume, newResumeId) => {
           setContent(loadedResume);
           setCurrentResumeId(newResumeId);
